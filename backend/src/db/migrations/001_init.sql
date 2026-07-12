@@ -15,20 +15,7 @@ CREATE TABLE IF NOT EXISTS companies (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Platform users (staff/admins, not buyers)
-CREATE TABLE IF NOT EXISTS users (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
-  full_name VARCHAR(150) NOT NULL,
-  email VARCHAR(150) UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
-  role VARCHAR(20) NOT NULL CHECK (role IN ('super_admin','company_admin','event_staff')),
-  -- Optional: scope event_staff to a single event (gate staff isolation)
-  assigned_event_id UUID,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-
--- Events
+-- Events (must come before users to support assigned_event_id FK)
 CREATE TABLE IF NOT EXISTS events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
@@ -48,17 +35,18 @@ CREATE TABLE IF NOT EXISTS events (
   CHECK (sales_start < sales_end)
 );
 
--- staff -> event FK (added after events table exists)
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'users_assigned_event_fk'
-  ) THEN
-    ALTER TABLE users
-      ADD CONSTRAINT users_assigned_event_fk
-      FOREIGN KEY (assigned_event_id) REFERENCES events(id) ON DELETE SET NULL;
-  END IF;
-END$$;
+-- Platform users (staff/admins, not buyers)
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+  full_name VARCHAR(150) NOT NULL,
+  email VARCHAR(150) UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  role VARCHAR(20) NOT NULL CHECK (role IN ('super_admin','company_admin','event_staff')),
+  -- Optional: scope event_staff to a single event (gate staff isolation)
+  assigned_event_id UUID REFERENCES events(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
 
 -- Ticket types (tiers) per event
 CREATE TABLE IF NOT EXISTS ticket_types (

@@ -13,12 +13,13 @@ app.use(cors());
 // Capture the raw body for payment webhooks (needed for signature verification).
 app.use(
   express.json({
+    limit: "50mb",
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
   })
 );
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 if (env.NODE_ENV !== "test") app.use(morgan("dev"));
 
 // Health check

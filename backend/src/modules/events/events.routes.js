@@ -20,6 +20,31 @@ async function loadEvent(id) {
   return rows[0];
 }
 
+// GET /api/events  (authenticated: lists their company's events; public: lists all published events)
+router.get(
+  "/",
+  asyncHandler(async (req, res) => {
+    let rows;
+    
+    // If authenticated as company_admin, return their company's events
+    if (req.user && req.user.role === "company_admin") {
+      const result = await query(
+        `SELECT * FROM events WHERE company_id = $1 ORDER BY event_start DESC`,
+        [req.user.company_id]
+      );
+      rows = result.rows;
+    } else {
+      // Public request: return only published events
+      const result = await query(
+        `SELECT * FROM events WHERE status = 'published' ORDER BY event_start DESC`
+      );
+      rows = result.rows;
+    }
+    
+    res.json({ events: rows });
+  })
+);
+
 // POST /api/events   (company_admin)
 router.post(
   "/",

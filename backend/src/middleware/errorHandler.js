@@ -9,7 +9,12 @@ function errorHandler(err, req, res, _next) {
   const status = err.status || 500;
   if (status >= 500) {
     // eslint-disable-next-line no-console
-    console.error(err);
+    console.error("❌ Server Error:", {
+      message: err.message,
+      code: err.code,
+      status,
+      stack: err.stack,
+    });
   }
   res.status(status).json({
     error: err.message || "Internal server error",

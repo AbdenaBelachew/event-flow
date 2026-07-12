@@ -36,10 +36,10 @@ router.post(
       const user = await client.query(
         `INSERT INTO users (company_id, full_name, email, password_hash, role)
          VALUES ($1,$2,$3,$4,'company_admin')
-         RETURNING id, company_id, full_name, email, role, assigned_event_id`,
+         RETURNING id, company_id, full_name, email, role`,
         [company.rows[0].id, admin_name, admin_email.toLowerCase(), passwordHash]
       );
-      return { company: company.rows[0], user: user.rows[0] };
+      return { company: company.rows[0], user: { ...user.rows[0], assigned_event_id: null } };
     });
 
     const token = signToken(result.user);
@@ -67,7 +67,7 @@ router.post(
       full_name: user.full_name,
       email: user.email,
       role: user.role,
-      assigned_event_id: user.assigned_event_id,
+      assigned_event_id: user.assigned_event_id || null,
     };
     res.json({ token: signToken(safeUser), user: safeUser });
   })
@@ -83,7 +83,17 @@ router.get(
       [req.user.id]
     );
     if (!rows.length) throw new ApiError(404, "User not found");
-    res.json({ user: rows[0] });
+    
+    // Ensure assigned_event_id is present (may be null)
+    const user = {
+      id: rows[0].id,
+      company_id: rows[0].company_id,
+      full_name: rows[0].full_name,
+      email: rows[0].email,
+      role: rows[0].role,
+      assigned_event_id: rows[0].assigned_event_id || null
+    };
+    res.json({ user });
   })
 );
 
