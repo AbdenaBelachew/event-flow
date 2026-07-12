@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Organizer Dashboard — Ticketing</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="topbar"><div class="brand"><span class="dot"></span> Organizer Dashboard</div><div class="nav"><a href="/">Public page</a><a href="/scanner.html">Scanner</a></div></div>
+  <div class="container">
+
+    <div id="loginCard" class="card">
+      <h2>Admin sign in</h2>
+      <label>Email</label><input id="email" value="admin@addisevents.et" />
+      <label>Password</label><input id="password" type="password" value="Password123!" />
+      <div style="margin-top:14px"><button class="btn block" onclick="login()">Sign in</button></div>
+      <p class="muted small" id="loginMsg"></p>
+    </div>
+
+    <div id="main" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h1>Events</h1>
+        <button class="btn secondary" onclick="logout()">Sign out</button>
+      </div>
+      <div id="events"></div>
+      <div id="detail"></div>
+    </div>
+  </div>
+
+  <script>
+    let token = localStorage.getItem('token'); let me = null;
+    function authH(){ return {'Authorization':'Bearer '+token,'Content-Type':'application/json'}; }
+
+    async function login(){
+      const res = await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({email:document.getElementById('email').value,password:document.getElementById('password').value})});
+      const data = await res.json();
+      if(!res.ok){ document.getElementById('loginMsg').textContent=data.error||'Login failed'; return; }
+      token=data.token; localStorage.setItem('token',token); init();
+    }
+    function logout(){ token=null; localStorage.removeItem('token'); render(); }
+    function render(){ document.getElementById('loginCard').style.display=token?'none':'block'; document.getElementById('main').style.display=token?'block':'none'; }
+
+    async function init(){
+      render();
+      const meRes = await fetch('/api/auth/me',{headers:authH()});
+      if(!meRes.ok){ logout(); return; }
+      me = (await meRes.json()).user;
+      const res = await fetch('/api/companies/'+me.company_id+'/events',{headers:authH()});
+      const data = await res.json();
+      const wrap=document.getElementById('events'); wrap.innerHTML='';
+      if(!data.events || !data.events.length){ wrap.innerHTML='<div class="card muted">No events yet.</div>'; return; }
+      data.events.forEach(e=>{
+        const el=document.createElement('div'); el.className='card';
+        el.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center">
+          <div><h2 style="margin:0">${e.title}</h2><div class="muted small">${e.tickets_sold}/${e.tickets_total} sold · <span class="badge">${e.status}</span></div></div>
+          <div style="display:flex;gap:8px">
+            <a class="btn secondary" href="/?event=${e.id}">Public</a>
+            <button class="btn" onclick="openEvent('${e.id}')">Stats</button>
+          </div></div>`;
+        wrap.appendChild(el);
+      });
+    }
+
+    async function openEvent(id){
+      const [stats, feed] = await Promise.all([
+        fetch('/api/events/'+id+'/stats',{headers:authH()}).then(r=>r.json()),
+        fetch('/api/events/'+id+'/check-ins?limit=25',{headers:authH()}).then(r=>r.json())
+      ]);
+      const d=document.getElementById('detail');
+      d.innerHTML=`<div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">Live stats</h2>
+        <a class="btn secondary" href="/api/events/${id}/export?_t=${Date.now()}" onclick="return exportCsv(event,'${id}')">Export CSV</a></div>
+        <div class="grid-stats" style="margin-top:14px">
+          <div class="stat"><div class="n">${stats.sold}</div><div class="l">Sold</div></div>
+          <div class="stat"><div class="n">${Number(stats.revenue_etb).toLocaleString()}</div><div class="l">Revenue ETB</div></div>
+          <div class="stat"><div class="n">${stats.checked_in}</div><div class="l">Checked in</div></div>
+          <div class="stat"><div class="n">${Math.round(stats.no_show_rate*100)}%</div><div class="l">No-show</div></div>
+        </div>
+        <h2 style="margin-top:20px">By ticket type</h2>
+        <table><thead><tr><th>Type</th><th>Sold</th><th>Capacity</th><th>Revenue</th></tr></thead><tbody>
+          ${stats.by_ticket_type.map(t=>`<tr><td>${t.name}</td><td>${t.quantity_sold}</td><td>${t.quantity_total}</td><td>${Number(t.revenue_etb).toLocaleString()} ETB</td></tr>`).join('')}
+        </tbody></table>
+        <h2 style="margin-top:20px">Recent check-ins</h2>
+        <table><thead><tr><th>Ticket</th><th>Holder</th><th>Result</th><th>By</th><th>When</th></tr></thead><tbody>
+          ${(feed.check_ins||[]).map(c=>`<tr><td class="code">${c.ticket_code}</td><td>${c.holder_name||'—'}</td><td>${c.result}</td><td>${c.scanned_by_name||'—'}</td><td class="muted small">${new Date(c.scanned_at).toLocaleTimeString()}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">No scans yet</td></tr>'}
+        </tbody></table>
+      </div>`;
+      d.scrollIntoView({behavior:'smooth'});
+    }
+
+    async function exportCsv(ev, id){
+      ev.preventDefault();
+      const res = await fetch('/api/events/'+id+'/export',{headers:authH()});
+      const blob = await res.blob();
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='attendees.csv'; a.click();
+      return false;
+    }
+
+    if(token) init(); else render();
+  </script>
+</body>
+</html>

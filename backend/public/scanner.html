@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gate Scanner — Ticketing</title>
+  <link rel="stylesheet" href="/style.css" />
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+  <div class="topbar"><div class="brand"><span class="dot"></span> Gate Scanner</div><div class="nav"><a href="/dashboard.html">Dashboard</a></div></div>
+  <div class="container" style="max-width:560px">
+
+    <div id="loginCard" class="card">
+      <h2>Staff sign in</h2>
+      <label>Email</label><input id="email" value="staff@addisevents.et" />
+      <label>Password</label><input id="password" type="password" value="Password123!" />
+      <div style="margin-top:14px"><button class="btn block" onclick="login()">Sign in</button></div>
+      <p class="muted small" id="loginMsg"></p>
+    </div>
+
+    <div id="scanCard" style="display:none">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <h2 style="margin:0">Scan tickets</h2>
+          <button class="btn secondary" onclick="logout()">Sign out</button>
+        </div>
+        <div id="reader" style="margin-top:14px"></div>
+        <div id="banner"></div>
+        <div style="margin-top:14px">
+          <label>Or enter code manually</label>
+          <div style="display:flex;gap:8px">
+            <input id="manual" placeholder="TKT-XXXX-XXXX-XXXX" />
+            <button class="btn" onclick="checkIn(document.getElementById('manual').value.trim())">Check</button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Recent scans (this device)</h2>
+        <table><tbody id="log"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let token = localStorage.getItem('token');
+    let scanner = null; let lastCode = null; let lastAt = 0;
+    // Offline tolerance: cache successfully-seen codes to warn on obvious dupes if connectivity drops.
+    const seen = JSON.parse(localStorage.getItem('seenCodes')||'{}');
+
+    function show(){ document.getElementById('loginCard').style.display = token?'none':'block';
+      document.getElementById('scanCard').style.display = token?'block':'none';
+      if(token && !scanner) startScanner(); }
+
+    async function login(){
+      const res = await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({email:document.getElementById('email').value,password:document.getElementById('password').value})});
+      const data = await res.json();
+      if(!res.ok){ document.getElementById('loginMsg').textContent = data.error||'Login failed'; return; }
+      token = data.token; localStorage.setItem('token',token); show();
+    }
+    function logout(){ token=null; localStorage.removeItem('token'); if(scanner){scanner.clear();scanner=null;} show(); }
+
+    function startScanner(){
+      scanner = new Html5Qrcode('reader');
+      scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: 250 },
+        (text)=>{ const now=Date.now(); if(text===lastCode && now-lastAt<3000) return; lastCode=text; lastAt=now; checkIn(text); },
+        ()=>{}
+      ).catch(e=>{ document.getElementById('banner').innerHTML='<div class="result-banner result-warn">Camera unavailable — use manual entry</div>'; });
+    }
+
+    function banner(kind, msg){
+      const map={success:'result-success', fail:'result-fail', warn:'result-warn'};
+      document.getElementById('banner').innerHTML = `<div class="result-banner ${map[kind]}">${msg}</div>`;
+    }
+
+    async function checkIn(code){
+      if(!code) return;
+      // Offline heuristic warning
+      if(seen[code]){ /* still call server; server is source of truth */ }
+      try{
+        const res = await fetch('/api/tickets/'+encodeURIComponent(code)+'/check-in',{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'}});
+        const data = await res.json();
+        const ok = data.result==='success';
+        banner(ok?'success': (data.result==='already_used'?'warn':'fail'), (ok?'✓ ':'✗ ')+ (data.message||data.error||data.result));
+        if(navigator.vibrate) navigator.vibrate(ok?80:[60,40,60]);
+        if(ok){ seen[code]=Date.now(); localStorage.setItem('seenCodes',JSON.stringify(seen)); }
+        addLog(code, data.result||'error');
+      }catch(e){
+        banner('warn','Offline — could not reach server'+(seen[code]?' (code seen before)':''));
+        addLog(code, 'offline');
+      }
+    }
+    function addLog(code, result){
+      const tr=document.createElement('tr');
+      tr.innerHTML=`<td class="code">${code}</td><td>${result}</td><td class="muted small">${new Date().toLocaleTimeString()}</td>`;
+      const log=document.getElementById('log'); log.insertBefore(tr, log.firstChild);
+    }
+    show();
+  </script>
+</body>
+</html>
