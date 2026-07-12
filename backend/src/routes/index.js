@@ -1,13 +1,13 @@
 const express = require("express");
 
-const authRoutes = require("./modules/auth/auth.routes");
-const companiesRoutes = require("./modules/companies/companies.routes");
-const eventsRoutes = require("./modules/events/events.routes");
-const ticketTypesRoutes = require("./modules/ticketTypes/ticketTypes.routes");
-const ordersRoutes = require("./modules/orders/orders.routes");
-const paymentsRoutes = require("./modules/payments/payments.routes");
-const ticketsRoutes = require("./modules/tickets/tickets.routes");
-const checkInsRoutes = require("./modules/checkIns/checkIns.routes");
+const authRoutes = require("../modules/auth/auth.routes");
+const companiesRoutes = require("../modules/companies/companies.routes");
+const eventsRoutes = require("../modules/events/events.routes");
+const ticketTypesRoutes = require("../modules/ticketTypes/ticketTypes.routes");
+const ordersRoutes = require("../modules/orders/orders.routes");
+const paymentsRoutes = require("../modules/payments/payments.routes");
+const ticketsRoutes = require("../modules/tickets/tickets.routes");
+const checkInsRoutes = require("../modules/checkIns/checkIns.routes");
 
 const router = express.Router();
 
