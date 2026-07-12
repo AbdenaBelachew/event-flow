@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Complete payment — Simulation</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="topbar"><div class="brand"><span class="dot"></span> Payment Gateway (Simulation)</div></div>
+  <div class="container" style="max-width:520px">
+    <div class="card">
+      <h1>Mock checkout</h1>
+      <p class="muted">No real gateway key is configured, so this simulates a hosted payment page. In production this is the Chapa / Telebirr / CBE Birr checkout.</p>
+      <div class="tier"><div class="name" id="gw"></div><div class="price" id="amt"></div></div>
+      <div style="display:flex;gap:10px;margin-top:20px">
+        <button class="btn block" onclick="finish('success')">Pay successfully</button>
+        <button class="btn secondary block" onclick="finish('failed')">Simulate failure</button>
+      </div>
+      <p class="muted small" id="status" style="margin-top:14px"></p>
+    </div>
+  </div>
+  <script>
+    const p = new URLSearchParams(location.search);
+    const ref = p.get('ref'); const gateway = p.get('gateway'); const amount = p.get('amount');
+    document.getElementById('gw').textContent = (gateway||'').replace('_',' ').toUpperCase();
+    document.getElementById('amt').textContent = Number(amount||0).toLocaleString('en-US',{minimumFractionDigits:2}) + ' ETB';
+
+    async function finish(kind){
+      document.getElementById('status').textContent='Processing...';
+      // Call the webhook the way a real gateway would (server re-verifies).
+      const res = await fetch('/api/payments/webhook/'+gateway,{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ tx_ref: ref, status: kind })
+      });
+      const data = await res.json();
+      if(data.order_id){
+        location.href = '/order.html?id='+data.order_id;
+      } else {
+        document.getElementById('status').textContent = data.error || 'Done: '+(data.status||kind);
+      }
+    }
+  </script>
+</body>
+</html>
