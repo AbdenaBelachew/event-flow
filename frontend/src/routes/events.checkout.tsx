@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { eventsAPI, ordersAPI } from '../lib/api'
@@ -27,6 +27,24 @@ export default function CheckoutPage() {
     buyer_email: '',
     buyer_phone: '',
   })
+
+  useEffect(() => {
+    // Pre-fill from registration form if available
+    const registrantInfo = sessionStorage.getItem('registrantInfo')
+    if (registrantInfo) {
+      try {
+        const data = JSON.parse(registrantInfo)
+        setBuyerInfo({
+          buyer_name: data.name || '',
+          buyer_email: data.email || '',
+          buyer_phone: data.phone || '',
+        })
+        sessionStorage.removeItem('registrantInfo')
+      } catch (err) {
+        console.error('Failed to parse registrant info', err)
+      }
+    }
+  }, [])
 
   const { data: availability, isLoading } = useQuery({
     queryKey: ['events', id, 'availability'],
@@ -114,7 +132,7 @@ export default function CheckoutPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-600"></div>
       </div>
     )
   }

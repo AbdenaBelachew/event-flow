@@ -1,195 +1,277 @@
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation, NavLink } from 'react-router-dom'
 import { useAuth } from '../lib/auth-context'
-import { Menu, X, LogOut, Plus, ChevronDown, Settings, Compass } from 'lucide-react'
+import {
+  Menu,
+  X,
+  LogOut,
+  Plus,
+  ChevronDown,
+  Compass,
+  LogIn,
+} from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
+import { cn } from '../lib/cn'
+import Button from './Button'
 
-export default function Navbar() {
+interface NavbarProps {
+  minimal?: boolean
+  forcePublic?: boolean
+}
+
+interface NavItem {
+  to: string
+  label: string
+  end?: boolean
+}
+
+const PUBLIC_NAV: NavItem[] = [
+  { to: '/browse', label: 'Discover' },
+]
+
+const PROTECTED_NAV: NavItem[] = [
+  { to: '/dashboard', label: 'Dashboard', end: true },
+ 
+]
+
+export default function Navbar({ minimal = false, forcePublic = false }: NavbarProps) {
   const navigate = useNavigate()
-  const { user, logout, company } = useAuth()
+  const location = useLocation()
+  const { user, logout, isAuthenticated } = useAuth()
+  const showAuthMenu = isAuthenticated && !forcePublic
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
-  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false)
+  const [scrolled, setScrolled] = useState(false)
   const profileMenuRef = useRef<HTMLDivElement>(null)
-  const settingsMenuRef = useRef<HTMLDivElement>(null)
 
   const handleLogout = () => {
     logout()
+    setProfileMenuOpen(false)
+    setMobileMenuOpen(false)
     navigate('/')
   }
 
-  // Close profile menu when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
         setProfileMenuOpen(false)
       }
-      if (settingsMenuRef.current && !settingsMenuRef.current.contains(event.target as Node)) {
-        setSettingsMenuOpen(false)
-      }
     }
-
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  useEffect(() => {
+    setMobileMenuOpen(false)
+    setProfileMenuOpen(false)
+  }, [location.pathname])
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
   return (
-    <nav className="bg-white border-b border-gray-200">
+    <header
+      className={cn(
+        'sticky top-0 z-40 bg-white/80 backdrop-blur-lg transition-shadow duration-200',
+        scrolled && 'shadow-sm border-b border-slate-200/60'
+      )}
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-14">
-          {/* Left: Logo */}
-          <div
-            onClick={() => navigate('/dashboard')}
-            className="flex items-center space-x-2 cursor-pointer flex-shrink-0"
-          >
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">E</span>
-            </div>
-            <span className="font-semibold text-gray-900 text-base hidden sm:inline">EventFlow</span>
+          <div className="flex items-center gap-8">
+            <NavLink to="/" className="flex items-center gap-2 flex-shrink-0">
+              <div className="w-7 h-7 rounded-lg bg-brand-600 flex items-center justify-center">
+                <span className="text-white text-xs font-bold">E</span>
+              </div>
+              <span className="font-display font-semibold text-slate-900 text-[15px] tracking-tight">
+                EventFlow
+              </span>
+            </NavLink>
+
+        
           </div>
 
-          {/* Center: Navigation (Desktop) */}
-         
+          {!minimal && (
+            <div className="hidden md:flex items-center gap-2">
+              {showAuthMenu ? (
+                <>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    leftIcon={<Plus className="w-3.5 h-3.5" />}
+                    onClick={() => navigate('/events/create')}
+                  >
+                    New event
+                  </Button>
 
-          {/* Right: Actions */}
-          <div className="hidden md:flex items-center space-x-4">
-            {/* Create Event Button */}
-            <button
-              onClick={() => navigate('/events/create')}
-              className="flex items-center space-x-1.5 px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition font-medium"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Create</span>
-            </button>
+                  <div className="relative" ref={profileMenuRef}>
+                    <button
+                      onClick={() => setProfileMenuOpen(!profileMenuOpen)}
+                      className="flex items-center gap-2 pl-2 pr-1 py-1 rounded-lg hover:bg-slate-100 transition-colors"
+                      aria-haspopup="menu"
+                      aria-expanded={profileMenuOpen}
+                    >
+                      <div className="w-7 h-7 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center font-medium text-xs">
+                        {user?.full_name?.charAt(0).toUpperCase()}
+                      </div>
+                      <ChevronDown
+                        className={cn(
+                          'w-3.5 h-3.5 text-slate-400 transition-transform',
+                          profileMenuOpen && 'rotate-180'
+                        )}
+                      />
+                    </button>
 
-            {/* Profile Dropdown */}
-            <div className="relative" ref={profileMenuRef}>
-              <button
-                onClick={() => setProfileMenuOpen(!profileMenuOpen)}
-                className="flex items-center space-x-2 px-3 py-2 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-50 transition"
-              >
-                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                  <span className="text-blue-600 font-semibold text-sm">
-                    {user?.full_name?.charAt(0).toUpperCase()}
-                  </span>
-                </div>
-                <ChevronDown className="w-4 h-4" />
-              </button>
+                    {profileMenuOpen && (
+                      <div className="absolute right-0 mt-1.5 w-56 bg-white border border-slate-200 rounded-xl shadow-lift z-50 overflow-hidden">
+                        <div className="px-3 py-2.5 border-b border-slate-100">
+                          <p className="text-sm font-medium text-slate-900 truncate">
+                            {user?.full_name}
+                          </p>
+                          <p className="text-xs text-slate-500 truncate">{user?.email}</p>
+                        </div>
 
-              {/* Dropdown Menu */}
-              {profileMenuOpen && (
-                <div className="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
-                  {/* User Info */}
-                  <div className="px-4 py-3 border-b border-gray-200">
-                    <p className="text-sm font-medium text-gray-900">{user?.full_name}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{user?.email}</p>
-                    {company && (
-                      <p className="text-xs text-gray-600 mt-1">{company.name}</p>
+                        <div className="py-1">
+                          <ProfileMenuItem
+                            label="Dashboard"
+                            onClick={() => navigate('/dashboard')}
+                          />
+                          <ProfileMenuItem
+                            label="Create event"
+                            onClick={() => navigate('/events/create')}
+                          />
+                          <ProfileMenuItem
+                            label="Discover"
+                            onClick={() => navigate('/browse')}
+                          />
+                        </div>
+
+                        <div className="border-t border-slate-100 py-1">
+                          <button
+                            onClick={handleLogout}
+                            className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition flex items-center gap-2"
+                          >
+                            <LogOut className="w-3.5 h-3.5" />
+                            Sign out
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </div>
-
-                  {/* Menu Items */}
-                  <div className="py-2">
-                    <button
-                      onClick={() => {
-                        navigate('/dashboard')
-                        setProfileMenuOpen(false)
-                      }}
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition flex items-center space-x-2"
-                    >
-                      <span>🎯</span>
-                      <span>Dashboard</span>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        navigate('/browse')
-                        setProfileMenuOpen(false)
-                      }}
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition flex items-center space-x-2"
-                    >
-                      <Compass className="w-4 h-4" />
-                      <span>Browse Events</span>
-                    </button>
-                  </div>
-
-                  {/* Divider */}
-                  <div className="border-t border-gray-200 py-2">
-                    <button
-                      onClick={handleLogout}
-                      className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition flex items-center space-x-2"
-                    >
-                      <LogOut className="w-4 h-4" />
-                      <span>Sign Out</span>
-                    </button>
-                  </div>
-                </div>
+                </>
+              ) : (
+                <>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => navigate('/login')}
+                  >
+                    Log in
+                  </Button>
+                  <Button size="sm" onClick={() => navigate('/register')}>
+                    Get started
+                  </Button>
+                </>
               )}
             </div>
-          </div>
+          )}
 
-          {/* Mobile Menu Button */}
-          <div className="md:hidden">
+          {!minimal && (
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="text-gray-600 hover:text-gray-900"
+              className="md:hidden p-2 rounded-lg text-slate-600 hover:bg-slate-100 transition"
+              aria-label="Toggle menu"
             >
-              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
-          </div>
+          )}
         </div>
+      </div>
 
-        {/* Mobile Menu */}
-        {mobileMenuOpen && (
-          <div className="md:hidden border-t border-gray-200 py-3 space-y-2">
-            <button
-              onClick={() => {
-                navigate('/dashboard')
-                setMobileMenuOpen(false)
-              }}
-              className="block w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 rounded-md transition"
+      {!minimal && mobileMenuOpen && (
+        <div className="md:hidden border-t border-slate-200 bg-white px-4 py-3 space-y-1">
+          <NavLink
+            to="/browse"
+            className={({ isActive }) =>
+              cn(
+                'block px-3 py-2 text-sm font-medium rounded-lg transition',
+                isActive
+                  ? 'text-brand-700 bg-brand-50'
+                  : 'text-slate-700 hover:bg-slate-100'
+              )
+            }
+          >
+            Discover
+          </NavLink>
+          {showAuthMenu && (
+            <NavLink
+              to="/dashboard"
+              end
+              className={({ isActive }) =>
+                cn(
+                  'block px-3 py-2 text-sm font-medium rounded-lg transition',
+                  isActive
+                    ? 'text-brand-700 bg-brand-50'
+                    : 'text-slate-700 hover:bg-slate-100'
+                )
+              }
             >
-              🎯 Dashboard
-            </button>
+              Dashboard
+            </NavLink>
+          )}
 
-            <button
-              onClick={() => {
-                navigate('/browse')
-                setMobileMenuOpen(false)
-              }}
-              className="block w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 rounded-md transition"
-            >
-              🧭 Browse Events
-            </button>
-
-            <button
-              onClick={() => {
-                navigate('/events/create')
-                setMobileMenuOpen(false)
-              }}
-              className="block w-full text-left px-4 py-2.5 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-md transition flex items-center space-x-2"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Create Event</span>
-            </button>
-
-            <div className="border-t border-gray-200 pt-2 mt-2">
-              <div className="px-4 py-2 bg-gray-50 rounded-md mb-2">
-                <p className="text-xs font-medium text-gray-600">Logged in as</p>
-                <p className="text-sm font-medium text-gray-900 mt-1">{user?.full_name}</p>
-                <p className="text-xs text-gray-500 mt-0.5">{user?.email}</p>
-              </div>
-
+          {showAuthMenu ? (
+            <>
               <button
-                onClick={handleLogout}
-                className="block w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 rounded-md transition flex items-center space-x-2"
+                onClick={() => navigate('/events/create')}
+                className="w-full text-left px-3 py-2 text-sm font-medium text-brand-700 hover:bg-brand-50 rounded-lg transition flex items-center gap-2"
               >
-                <LogOut className="w-4 h-4" />
-                <span>Sign Out</span>
+                <Plus className="w-3.5 h-3.5" />
+                New event
+              </button>
+              <div className="border-t border-slate-100 pt-2 mt-2">
+                <button
+                  onClick={handleLogout}
+                  className="w-full text-left px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition flex items-center gap-2"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  Sign out
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+              <button
+                onClick={() => navigate('/login')}
+                className="px-3 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition text-center"
+              >
+                Log in
+              </button>
+              <button
+                onClick={() => navigate('/register')}
+                className="px-3 py-2 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg transition text-center"
+              >
+                Get started
               </button>
             </div>
-          </div>
-        )}
-      </div>
-    </nav>
+          )}
+        </div>
+      )}
+    </header>
+  )
+}
+
+function ProfileMenuItem({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition"
+    >
+      {label}
+    </button>
   )
 }

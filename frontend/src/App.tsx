@@ -3,6 +3,7 @@ import { QueryClientProvider, QueryClient } from '@tanstack/react-query'
 import { AuthProvider } from './lib/auth-context'
 import ProtectedRoute from './components/ProtectedRoute'
 import ErrorBoundary from './components/ErrorBoundary'
+import AppLayout from './components/AppLayout'
 
 // Pages
 import HomePage from './routes/index'
@@ -35,31 +36,33 @@ export default function App() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <Router>
-            <Routes>
-              {/* Public Routes */}
-              <Route path="/" element={<HomePage />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/register" element={<RegisterPage />} />
-              <Route path="/browse" element={<BrowsePage />} />
-              <Route path="/payment-callback" element={<PaymentCallbackPage />} />
+            <AppLayout>
+              <Routes>
+                {/* Public Routes */}
+                <Route path="/" element={<HomePage />} />
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/register" element={<RegisterPage />} />
+                <Route path="/browse" element={<BrowsePage />} />
+                <Route path="/payment-callback" element={<PaymentCallbackPage />} />
 
-              {/* Protected Routes */}
-              <Route element={<ProtectedRoute />}>
-                <Route path="/dashboard" element={<DashboardPage />} />
-                <Route path="/events/create" element={<CreateEventPage />} />
-                <Route path="/events/:id" element={<EventDetailPage />} />
-                <Route path="/events/:id/edit" element={<EditEventPage />} />
-                <Route path="/events/:id/scanner" element={<ScannerPage />} />
-                <Route path="/events/:id/stats" element={<StatsPage />} />
-              </Route>
+                {/* Protected Routes */}
+                <Route element={<ProtectedRoute />}>
+                  <Route path="/dashboard" element={<DashboardPage />} />
+                  <Route path="/events/create" element={<CreateEventPage />} />
+                  <Route path="/events/:id" element={<EventDetailPage />} />
+                  <Route path="/events/:id/edit" element={<EditEventPage />} />
+                  <Route path="/events/:id/scanner" element={<ScannerPage />} />
+                  <Route path="/events/:id/stats" element={<StatsPage />} />
+                </Route>
 
-              {/* Public Checkout (not protected - guests can checkout) */}
-              <Route path="/events/:id/checkout" element={<CheckoutPage />} />
-              <Route path="/orders/:id" element={<OrderPage />} />
+                {/* Public Checkout (not protected - guests can checkout) */}
+                <Route path="/events/:id/checkout" element={<CheckoutPage />} />
+                <Route path="/orders/:id" element={<OrderPage />} />
 
-              {/* 404 */}
-              <Route path="*" element={<NotFoundPage />} />
-            </Routes>
+                {/* 404 */}
+                <Route path="*" element={<NotFoundPage />} />
+              </Routes>
+            </AppLayout>
           </Router>
         </AuthProvider>
       </QueryClientProvider>

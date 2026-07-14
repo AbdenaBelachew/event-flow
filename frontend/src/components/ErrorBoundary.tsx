@@ -32,7 +32,7 @@ export default class ErrorBoundary extends Component<Props, State> {
             <p className="text-gray-600 mb-4">{this.state.error?.message}</p>
             <button
               onClick={() => window.location.reload()}
-              className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 font-medium"
+              className="w-full bg-brand-600 text-white py-2 rounded-lg hover:bg-brand-700 font-medium"
             >
               Reload Page
             </button>

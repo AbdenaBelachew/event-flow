@@ -1,4 +1,4 @@
-import { InputHTMLAttributes, ReactNode } from 'react'
+import { InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from 'react'
 import { clsx } from 'clsx'
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
@@ -6,6 +6,7 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   error?: string
   helperText?: string
   icon?: ReactNode
+  rightIcon?: ReactNode
 }
 
 export default function Input({
@@ -13,36 +14,51 @@ export default function Input({
   error,
   helperText,
   icon,
+  rightIcon,
   className,
   ...props
 }: InputProps) {
   return (
-    <div className="flex flex-col space-y-1">
+    <div className="flex flex-col">
       {label && (
-        <label className="text-sm font-medium text-gray-700">
+        <label className="label-base">
           {label}
-          {props.required && <span className="text-red-500 ml-1">*</span>}
+          {props.required && <span className="text-red-500 ml-0.5">*</span>}
         </label>
       )}
       <div className="relative">
-        {icon && <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">{icon}</div>}
+        {icon && (
+          <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+            {icon}
+          </div>
+        )}
         <input
           className={clsx(
-            'w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200',
-            error && 'border-red-500 focus:ring-red-500',
+            'input-base',
             icon && 'pl-10',
+            rightIcon && 'pr-10',
+            error && 'border-red-400 focus:border-red-500 focus:ring-red-500/30',
             className
           )}
           {...props}
         />
+        {rightIcon && (
+          <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+            {rightIcon}
+          </div>
+        )}
       </div>
-      {error && <p className="text-sm text-red-600 font-medium">{error}</p>}
-      {helperText && !error && <p className="text-sm text-gray-500">{helperText}</p>}
+      {error && (
+        <p className="text-xs text-red-600 mt-1.5 font-medium">{error}</p>
+      )}
+      {helperText && !error && (
+        <p className="text-xs text-slate-500 mt-1.5">{helperText}</p>
+      )}
     </div>
   )
 }
 
-interface TextAreaProps extends InputHTMLAttributes<HTMLTextAreaElement> {
+interface TextAreaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   label?: string
   error?: string
   helperText?: string
@@ -58,24 +74,28 @@ export function TextArea({
   ...props
 }: TextAreaProps) {
   return (
-    <div className="flex flex-col space-y-1">
+    <div className="flex flex-col">
       {label && (
-        <label className="text-sm font-medium text-gray-700">
+        <label className="label-base">
           {label}
-          {props.required && <span className="text-red-500 ml-1">*</span>}
+          {props.required && <span className="text-red-500 ml-0.5">*</span>}
         </label>
       )}
       <textarea
         rows={rows}
         className={clsx(
-          'w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200 resize-none',
-          error && 'border-red-500 focus:ring-red-500',
+          'input-base resize-none',
+          error && 'border-red-400 focus:border-red-500 focus:ring-red-500/30',
           className
         )}
-        {...(props as any)}
+        {...props}
       />
-      {error && <p className="text-sm text-red-600 font-medium">{error}</p>}
-      {helperText && !error && <p className="text-sm text-gray-500">{helperText}</p>}
+      {error && (
+        <p className="text-xs text-red-600 mt-1.5 font-medium">{error}</p>
+      )}
+      {helperText && !error && (
+        <p className="text-xs text-slate-500 mt-1.5">{helperText}</p>
+      )}
     </div>
   )
 }

@@ -22,7 +22,7 @@ export default function PaymentCallbackPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-6"></div>
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-brand-600 mx-auto mb-6"></div>
           <p className="text-lg text-gray-600">Verifying payment...</p>
         </div>
       </div>
@@ -35,7 +35,7 @@ export default function PaymentCallbackPage() {
         <Card className="max-w-md w-full">
           <CardContent className="py-12">
             <div className="text-center space-y-6">
-              <CheckCircle className="w-16 h-16 text-green-600 mx-auto" />
+              <CheckCircle className="w-16 h-16 text-purple-600 mx-auto" />
               <div>
                 <h1 className="text-2xl font-bold text-gray-900 mb-2">Payment Successful!</h1>
                 <p className="text-gray-600">

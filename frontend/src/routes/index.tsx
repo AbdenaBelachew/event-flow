@@ -1,303 +1,334 @@
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth-context'
+import { useEffect } from 'react'
 import {
-  Ticket,
-  BarChart3,
-  Zap,
-  Users,
-  CheckCircle,
-  ArrowRight,
   Calendar,
   CreditCard,
   QrCode,
+  BarChart3,
+  ArrowRight,
+  Check,
+  Mail,
+  Receipt,
+  MapPin,
 } from 'lucide-react'
 import Button from '../components/Button'
+
+// Honest numbers, not auto-generated. If you don't have these yet, drop them.
+const STATS = [
+  { value: 'Free', label: 'for your first 100 tickets per event' },
+  { value: '3% + 10 birr', label: 'per paid ticket after that — that\'s it' },
+  { value: 'Chapa · Telebirr · CBE', label: 'money goes straight to your account' },
+]
+
+const FEATURES = [
+  {
+    icon: Calendar,
+    title: 'A page your attendees actually want to share',
+    body: 'Photos, lineup, venue map, what to bring. Everything in one link, mobile-first by default.',
+  },
+  {
+    icon: CreditCard,
+    title: 'Payments people in Ethiopia already use',
+    body: 'Chapa, Telebirr and CBE Birr at checkout. We don\'t hold your money — it lands in your account.',
+  },
+  {
+    icon: QrCode,
+    title: 'Check-in without the paper list',
+    body: 'Every ticket has a unique QR. Open the scanner on any phone, point, done. Works offline for a moment if the venue\'s wifi is acting up.',
+  },
+  {
+    icon: BarChart3,
+    title: 'Know what\'s selling while it\'s selling',
+    body: 'Live counts of tickets, revenue, and check-ins. No spreadsheets, no end-of-night reconciliation.',
+  },
+  {
+    icon: Mail,
+    title: 'Tickets in the inbox, not on a receipt printer',
+    body: 'QR tickets get emailed the second payment clears. Resends, name changes, and cancellations are one click.',
+  },
+  {
+    icon: Receipt,
+    title: 'Bulk ticket actions when you need them',
+    body: 'Comp a list of journalists, move a VIP to the front row, refund a typo — all from the same screen.',
+  },
+]
+
+const FAQ = [
+  {
+    q: 'Do I need a registered company to use it?',
+    a: 'No. Individuals running a fundraiser, a band, or a one-off meetup can all create events. You only need a payout method.',
+  },
+  {
+    q: 'What about refunds?',
+    a: 'You decide the refund window per event. The buyer gets a Telebirr/CBE reversal the same way they paid — no manual bank runs.',
+  },
+  {
+    q: 'Can I sell tickets at the door?',
+    a: 'Yes. Create a "door" ticket type and scan it like any other. It shows up in the same dashboard.',
+  },
+]
 
 export default function HomePage() {
   const navigate = useNavigate()
   const { isAuthenticated } = useAuth()
 
-  if (isAuthenticated) {
-    navigate('/dashboard')
-    return null
-  }
+  // Fix: was calling navigate() during render. Move to effect.
+  useEffect(() => {
+    if (isAuthenticated) navigate('/dashboard', { replace: true })
+  }, [isAuthenticated, navigate])
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Navigation */}
-      <nav className="border-b border-gray-200 bg-white">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <Ticket className="w-6 h-6 text-blue-600" />
-            <span className="text-xl font-semibold text-gray-900">EventFlow</span>
-          </div>
-          <div className="flex gap-4">
-            <Button
-              variant="ghost"
-              onClick={() => navigate('/login')}
-              className="text-gray-700"
-            >
-              Login
-            </Button>
-            <Button onClick={() => navigate('/register')} className="bg-blue-600 hover:bg-blue-700">
-              Sign Up
-            </Button>
+    <div className="bg-white text-slate-800">
+      {/* ---------- HERO ---------- */}
+      <section className="relative">
+        <div className="section pt-14 pb-20 sm:pt-20 sm:pb-28">
+          <div className="grid lg:grid-cols-12 gap-10 lg:gap-16 items-start">
+            <div className="lg:col-span-6">
+              <p className="text-sm text-slate-500 mb-6">
+                For people in Ethiopia running events people actually want to attend.
+              </p>
+
+              <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-bold text-slate-900 tracking-tight leading-[1.05] mb-6">
+                Sell tickets.
+                <br />
+                <span className="text-brand-600">Get paid in birr.</span>
+                <br />
+                Skip the spreadsheet.
+              </h1>
+
+              <p className="text-lg text-slate-600 leading-relaxed mb-8 max-w-xl">
+                EventFlow is a small tool for selling tickets to events in Ethiopia.
+                Make a page, share a link, get money through Chapa or Telebirr, scan
+                people in at the door. That&apos;s the whole thing.
+              </p>
+
+              <div className="flex flex-col sm:flex-row gap-3 mb-8">
+                <Button
+                  size="lg"
+                  onClick={() => navigate(isAuthenticated ? '/events/create' : '/register')}
+                  rightIcon={<ArrowRight className="w-4 h-4" />}
+                >
+                  {isAuthenticated ? 'Create an event' : 'Make your first event'}
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  onClick={() => navigate('/browse')}
+                >
+                  See what&apos;s on this week
+                </Button>
+              </div>
+
+              <p className="text-sm text-slate-500">
+                No card needed to start. You can run an entire event on the free
+                tier and only pay when you start making real money.
+              </p>
+            </div>
+
+            {/* Real product preview: a single event page, not a fake dashboard. */}
+            <div className="lg:col-span-6 lg:pl-4">
+              <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-card">
+                <div className="aspect-[16/10] bg-gradient-to-br from-brand-600 via-brand-500 to-brand-400 relative">
+                  <div className="absolute inset-0 flex items-end p-5">
+                    <div className="bg-white/95 backdrop-blur rounded-lg px-3 py-2 text-xs text-slate-600">
+                      <span className="font-medium text-slate-800">Sat, Aug 16</span>
+                      <span className="mx-2 text-slate-300">·</span>
+                      <span>Millennium Hall, Addis Ababa</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-5 sm:p-6">
+                  <h3 className="font-display text-xl sm:text-2xl font-semibold text-slate-900 mb-1">
+                    ሙዚቃ ከአዲስ — A Night of New Sounds
+                  </h3>
+                  <p className="text-sm text-slate-500 mb-5">
+                    Six artists, one stage, two hours. Doors at 7.
+                  </p>
+
+                  <div className="space-y-3">
+                    {[
+                      { tier: 'Early bird', price: '350 ETB', left: '12 left' },
+                      { tier: 'General', price: '500 ETB', left: null },
+                      { tier: 'VIP (front rows)', price: '1,200 ETB', left: '4 left' },
+                    ].map((t) => (
+                      <div
+                        key={t.tier}
+                        className="flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3"
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-slate-800">{t.tier}</p>
+                          {t.left && (
+                            <p className="text-xs text-amber-700">{t.left}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm font-semibold text-slate-900">
+                            {t.price}
+                          </span>
+                          <button
+                            type="button"
+                            className="text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5"
+                          >
+                            Buy
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="text-xs text-slate-400 mt-4">
+                    Pay with Chapa · Telebirr · CBE Birr · cards
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </nav>
+      </section>
 
-      {/* Hero */}
-      <section className="max-w-7xl mx-auto px-6 py-20">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
-          <div>
-            <h1 className="text-5xl font-bold text-gray-900 leading-tight mb-6">
-              Sell Event Tickets Online
-            </h1>
-            <p className="text-xl text-gray-600 mb-8 leading-relaxed">
-              EventFlow makes it simple to create events, manage tickets, accept payments, and check
-              in attendees—all in one place.
+      {/* ---------- THE THREE THINGS ---------- */}
+      <section className="border-y border-slate-200 bg-slate-50/60">
+        <div className="section py-12">
+          <div className="grid md:grid-cols-3 gap-8 md:gap-12">
+            {STATS.map((s) => (
+              <div key={s.label}>
+                <p className="font-display text-2xl sm:text-3xl font-semibold text-slate-900 mb-2">
+                  {s.value}
+                </p>
+                <p className="text-sm text-slate-600 leading-relaxed">{s.label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ---------- FEATURES ---------- */}
+      <section>
+        <div className="section py-20 sm:py-24">
+          <div className="max-w-2xl mb-12">
+            <h2 className="font-display text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight mb-4">
+              What you actually get
+            </h2>
+            <p className="text-lg text-slate-600">
+              Not a 40-page feature list. Just the things that come up at every
+              event we&apos;ve helped run.
             </p>
-            <div className="flex gap-4">
-              <Button
-                onClick={() => navigate('/register')}
-                className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"
-                size="lg"
+          </div>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {FEATURES.map((f) => (
+              <div
+                key={f.title}
+                className="border border-slate-200 rounded-2xl p-6 bg-white"
               >
-                Get Started Free
-                <ArrowRight className="w-4 h-4" />
+                <div className="w-10 h-10 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center mb-4">
+                  <f.icon className="w-5 h-5" />
+                </div>
+                <h3 className="font-display text-lg font-semibold text-slate-900 mb-2">
+                  {f.title}
+                </h3>
+                <p className="text-sm text-slate-600 leading-relaxed">{f.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+     
+
+     
+    
+
+      {/* ---------- FAQ ---------- */}
+      <section>
+        <div className="section py-20 sm:py-24">
+          <div className="max-w-2xl mb-10">
+            <h2 className="font-display text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight mb-4">
+              Questions we get a lot
+            </h2>
+          </div>
+          <div className="max-w-3xl divide-y divide-slate-200 border-y border-slate-200">
+            {FAQ.map((item) => (
+              <details key={item.q} className="group py-5">
+                <summary className="flex items-start justify-between gap-6 cursor-pointer list-none">
+                  <span className="font-medium text-slate-900">{item.q}</span>
+                  <span
+                    aria-hidden
+                    className="text-slate-400 group-open:rotate-45 transition-transform text-xl leading-none mt-0.5"
+                  >
+                    +
+                  </span>
+                </summary>
+                <p className="text-slate-600 mt-3 leading-relaxed">{item.a}</p>
+              </details>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ---------- CLOSING CTA ---------- */}
+      <section>
+        <div className="section pb-20">
+          <div className="border border-slate-200 rounded-2xl p-8 sm:p-12 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
+            <div className="max-w-xl">
+              <h2 className="font-display text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight mb-2">
+                Got an event coming up?
+              </h2>
+              <p className="text-slate-600">
+                Make a page in about ten minutes. If you get stuck, write to us —
+                a real person answers.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Button
+                size="lg"
+                onClick={() => navigate(isAuthenticated ? '/events/create' : '/register')}
+                rightIcon={<ArrowRight className="w-4 h-4" />}
+              >
+                {isAuthenticated ? 'New event' : 'Get started'}
               </Button>
               <Button
+                size="lg"
+                variant="outline"
                 onClick={() => navigate('/browse')}
-                variant="secondary"
-                size="lg"
-                className="text-gray-700"
+                leftIcon={<MapPin className="w-4 h-4" />}
               >
-                Browse Events
-              </Button>
-            </div>
-            <p className="text-sm text-gray-500 mt-6">
-              ✓ No credit card required • ✓ Free to start • ✓ Full-featured trial
-            </p>
-          </div>
-          <div className="bg-gray-100 rounded-lg h-96 flex items-center justify-center">
-            <div className="text-center">
-              <Ticket className="w-24 h-24 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-400">Event Dashboard Preview</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Features */}
-      <section className="bg-gray-50 border-t border-gray-200">
-        <div className="max-w-7xl mx-auto px-6 py-20">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">Everything You Need</h2>
-            <p className="text-gray-600">
-              All the tools to run successful events, from creation to check-in
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {/* Feature 1 */}
-            <div className="bg-white rounded-lg p-8 border border-gray-200">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
-                <Calendar className="w-6 h-6 text-blue-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Easy Event Creation</h3>
-              <p className="text-gray-600">
-                Create events with all the details. Add multiple ticket types with custom pricing.
-              </p>
-            </div>
-
-            {/* Feature 2 */}
-            <div className="bg-white rounded-lg p-8 border border-gray-200">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
-                <CreditCard className="w-6 h-6 text-blue-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Accept Payments</h3>
-              <p className="text-gray-600">
-                Accept payments via Chapa, Telebirr, CBE Birr, and more. Fast, secure transactions.
-              </p>
-            </div>
-
-            {/* Feature 3 */}
-            <div className="bg-white rounded-lg p-8 border border-gray-200">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
-                <QrCode className="w-6 h-6 text-blue-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">QR Code Check-in</h3>
-              <p className="text-gray-600">
-                Scan QR codes at your event. Fast validation, no double check-ins.
-              </p>
-            </div>
-
-            {/* Feature 4 */}
-            <div className="bg-white rounded-lg p-8 border border-gray-200">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
-                <BarChart3 className="w-6 h-6 text-blue-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Real-time Analytics</h3>
-              <p className="text-gray-600">
-                Track sales, revenue, attendance, and more in real-time dashboard.
-              </p>
-            </div>
-
-            {/* Feature 5 */}
-            <div className="bg-white rounded-lg p-8 border border-gray-200">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
-                <Users className="w-6 h-6 text-blue-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Guest Checkout</h3>
-              <p className="text-gray-600">
-                Attendees can buy tickets without creating an account. Simple, fast checkout.
-              </p>
-            </div>
-
-            {/* Feature 6 */}
-            <div className="bg-white rounded-lg p-8 border border-gray-200">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
-                <Zap className="w-6 h-6 text-blue-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Fast & Reliable</h3>
-              <p className="text-gray-600">
-                Built for speed and reliability. Handle events of any size with confidence.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* How it Works */}
-      <section className="max-w-7xl mx-auto px-6 py-20">
-        <div className="text-center mb-16">
-          <h2 className="text-3xl font-bold text-gray-900 mb-4">How It Works</h2>
-          <p className="text-gray-600">Get your event online in minutes</p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-          {/* Step 1 */}
-          <div className="text-center">
-            <div className="w-12 h-12 bg-blue-600 text-white rounded-full flex items-center justify-center mx-auto mb-4 font-semibold">
-              1
-            </div>
-            <h3 className="font-semibold text-gray-900 mb-2">Create Event</h3>
-            <p className="text-gray-600 text-sm">
-              Set up your event with details, dates, and location
-            </p>
-          </div>
-
-          {/* Step 2 */}
-          <div className="text-center">
-            <div className="w-12 h-12 bg-blue-600 text-white rounded-full flex items-center justify-center mx-auto mb-4 font-semibold">
-              2
-            </div>
-            <h3 className="font-semibold text-gray-900 mb-2">Add Tickets</h3>
-            <p className="text-gray-600 text-sm">
-              Create ticket types with different prices and quantities
-            </p>
-          </div>
-
-          {/* Step 3 */}
-          <div className="text-center">
-            <div className="w-12 h-12 bg-blue-600 text-white rounded-full flex items-center justify-center mx-auto mb-4 font-semibold">
-              3
-            </div>
-            <h3 className="font-semibold text-gray-900 mb-2">Go Live</h3>
-            <p className="text-gray-600 text-sm">
-              Publish your event and start selling tickets
-            </p>
-          </div>
-
-          {/* Step 4 */}
-          <div className="text-center">
-            <div className="w-12 h-12 bg-blue-600 text-white rounded-full flex items-center justify-center mx-auto mb-4 font-semibold">
-              4
-            </div>
-            <h3 className="font-semibold text-gray-900 mb-2">Check In</h3>
-            <p className="text-gray-600 text-sm">
-              Scan QR codes at your event for quick validation
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing */}
-      <section className="bg-gray-50 border-t border-gray-200">
-        <div className="max-w-7xl mx-auto px-6 py-20">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">Simple Pricing</h2>
-            <p className="text-gray-600">No hidden fees, transparent pricing</p>
-          </div>
-
-          <div className="bg-white rounded-lg border border-gray-200 p-12 max-w-2xl mx-auto">
-            <div className="text-center">
-              <p className="text-gray-600 mb-4">Everything included</p>
-              <div className="mb-8">
-                <span className="text-5xl font-bold text-gray-900">Free</span>
-                <p className="text-gray-600 mt-2">to start • Always</p>
-              </div>
-              <ul className="space-y-3 mb-8 text-left max-w-sm mx-auto">
-                <li className="flex items-center gap-3">
-                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-                  <span className="text-gray-700">Unlimited events</span>
-                </li>
-                <li className="flex items-center gap-3">
-                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-                  <span className="text-gray-700">Unlimited tickets</span>
-                </li>
-                <li className="flex items-center gap-3">
-                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-                  <span className="text-gray-700">Real-time analytics</span>
-                </li>
-                <li className="flex items-center gap-3">
-                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-                  <span className="text-gray-700">Multiple payment methods</span>
-                </li>
-                <li className="flex items-center gap-3">
-                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-                  <span className="text-gray-700">QR code check-in</span>
-                </li>
-              </ul>
-              <Button
-                onClick={() => navigate('/register')}
-                className="bg-blue-600 hover:bg-blue-700 text-white w-full"
-                size="lg"
-              >
-                Get Started Free
+                Browse events
               </Button>
             </div>
           </div>
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="max-w-7xl mx-auto px-6 py-20 text-center">
-        <h2 className="text-3xl font-bold text-gray-900 mb-6">Ready to sell tickets?</h2>
-        <p className="text-gray-600 mb-8 max-w-md mx-auto">
-          Join thousands of event organizers using EventFlow to manage their events.
-        </p>
-        <Button
-          onClick={() => navigate('/register')}
-          className="bg-blue-600 hover:bg-blue-700 text-white inline-flex items-center gap-2"
-          size="lg"
-        >
-          Create Free Account
-          <ArrowRight className="w-4 h-4" />
-        </Button>
-      </section>
-
-      {/* Footer */}
-      <footer className="border-t border-gray-200 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <Ticket className="w-5 h-5 text-blue-600" />
-              <span className="font-semibold text-gray-900">EventFlow</span>
+      {/* ---------- FOOTER ---------- */}
+      <footer className="border-t border-slate-200">
+        <div className="section py-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 text-sm text-slate-500">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-md bg-brand-600 flex items-center justify-center">
+              <span className="text-white text-[11px] font-bold">E</span>
             </div>
-            <p className="text-gray-600 text-sm">
-              &copy; 2026 EventFlow. All rights reserved.
-            </p>
+            <span className="font-medium text-slate-700">EventFlow</span>
+            <span className="text-slate-300">·</span>
+            <span>Addis Ababa</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <button
+              onClick={() => navigate('/browse')}
+              className="hover:text-slate-800 transition-colors"
+            >
+              Discover
+            </button>
+            <button
+              onClick={() => navigate(isAuthenticated ? '/dashboard' : '/register')}
+              className="hover:text-slate-800 transition-colors"
+            >
+              {isAuthenticated ? 'Dashboard' : 'Get started'}
+            </button>
+            <a href="mailto:hello@eventflow.app" className="hover:text-slate-800 transition-colors">
+              hello@eventflow.app
+            </a>
           </div>
         </div>
       </footer>

@@ -1,25 +1,42 @@
 import { ButtonHTMLAttributes, ReactNode } from 'react'
-import { clsx } from 'clsx'
+import { cn } from '../lib/cn'
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode
-  variant?: 'primary' | 'secondary' | 'danger' | 'ghost'
-  size?: 'sm' | 'md' | 'lg'
+  variant?:
+    | 'primary'
+    | 'secondary'
+    | 'danger'
+    | 'ghost'
+    | 'outline'
+    | 'success'
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl'
   isLoading?: boolean
   fullWidth?: boolean
+  leftIcon?: ReactNode
+  rightIcon?: ReactNode
 }
 
-const variantStyles = {
-  primary: 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800',
-  secondary: 'bg-gray-200 text-gray-900 hover:bg-gray-300 active:bg-gray-400',
-  danger: 'bg-red-600 text-white hover:bg-red-700 active:bg-red-800',
-  ghost: 'text-gray-700 hover:bg-gray-100 active:bg-gray-200',
+const variantStyles: Record<string, string> = {
+  primary:
+    'bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800 shadow-sm hover:shadow',
+  secondary:
+    'bg-slate-100 text-slate-900 hover:bg-slate-200 active:bg-slate-300 border border-slate-200/60',
+  outline:
+    'bg-white text-slate-700 border border-slate-200 hover:border-slate-300 hover:bg-slate-50',
+  danger:
+    'bg-red-600 text-white hover:bg-red-700 active:bg-red-800 shadow-sm',
+  success:
+    'bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800 shadow-sm',
+  ghost: 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
 }
 
-const sizeStyles = {
-  sm: 'px-3 py-1.5 text-sm',
-  md: 'px-4 py-2 text-base',
-  lg: 'px-6 py-3 text-lg',
+const sizeStyles: Record<string, string> = {
+  xs: 'px-2.5 py-1 text-xs gap-1.5',
+  sm: 'px-3 py-1.5 text-sm gap-1.5',
+  md: 'px-4 py-2.5 text-sm gap-2',
+  lg: 'px-5 py-3 text-sm gap-2',
+  xl: 'px-6 py-3.5 text-base gap-2.5',
 }
 
 export default function Button({
@@ -28,6 +45,8 @@ export default function Button({
   size = 'md',
   isLoading = false,
   fullWidth = false,
+  leftIcon,
+  rightIcon,
   disabled,
   className,
   ...props
@@ -35,8 +54,8 @@ export default function Button({
   return (
     <button
       disabled={disabled || isLoading}
-      className={clsx(
-        'font-medium rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600',
+      className={cn(
+        'btn btn-press inline-flex items-center justify-center font-medium rounded-xl transition-all duration-150 select-none',
         variantStyles[variant],
         sizeStyles[size],
         fullWidth && 'w-full',
@@ -46,12 +65,16 @@ export default function Button({
       {...props}
     >
       {isLoading ? (
-        <span className="flex items-center justify-center space-x-2">
-          <div className="animate-spin rounded-full h-4 w-4 border-2 border-current border-t-transparent"></div>
-          <span>Loading...</span>
+        <span className="inline-flex items-center gap-2">
+          <span className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
+          <span>Loading…</span>
         </span>
       ) : (
-        children
+        <>
+          {leftIcon && <span className="-ml-0.5">{leftIcon}</span>}
+          {children}
+          {rightIcon && <span className="-mr-0.5">{rightIcon}</span>}
+        </>
       )}
     </button>
   )

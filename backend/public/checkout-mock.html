@@ -7,37 +7,67 @@
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <div class="topbar"><div class="brand"><span class="dot"></span> Payment Gateway (Simulation)</div></div>
+  <div class="topbar">
+    <div class="brand"><span class="dot"></span> Payment Gateway (Simulation)</div>
+  </div>
+
   <div class="container" style="max-width:520px">
     <div class="card">
-      <h1>Mock checkout</h1>
-      <p class="muted">No real gateway key is configured, so this simulates a hosted payment page. In production this is the Chapa / Telebirr / CBE Birr checkout.</p>
-      <div class="tier"><div class="name" id="gw"></div><div class="price" id="amt"></div></div>
-      <div style="display:flex;gap:10px;margin-top:20px">
-        <button class="btn block" onclick="finish('success')">Pay successfully</button>
-        <button class="btn secondary block" onclick="finish('failed')">Simulate failure</button>
+      <h1 style="margin-top:0">💳 Mock checkout</h1>
+      <p class="muted small">This simulates a real payment gateway. In production, you'd be redirected to Chapa, Telebirr, or CBE Birr.</p>
+      
+      <div style="background:var(--surface-2);border-radius:12px;padding:16px;margin:20px 0">
+        <div class="tier" style="border:none;background:transparent;margin:0;padding:0">
+          <div><div class="name" id="gw"></div><div class="muted small">Amount to pay</div></div>
+          <div class="price" id="amt"></div>
+        </div>
       </div>
-      <p class="muted small" id="status" style="margin-top:14px"></p>
+
+      <p class="muted small" id="status" style="margin-bottom:12px"></p>
+      
+      <div style="display:flex;gap:10px">
+        <button class="btn block" onclick="finish('success')">✅ Pay successfully</button>
+        <button class="btn secondary block" onclick="finish('failed')">❌ Simulate failure</button>
+      </div>
+      
+      <p class="muted small" style="margin-top:16px;text-align:center">You can test both scenarios. In real payment gateways, you'll enter your credentials.</p>
     </div>
   </div>
+
   <script>
     const p = new URLSearchParams(location.search);
-    const ref = p.get('ref'); const gateway = p.get('gateway'); const amount = p.get('amount');
-    document.getElementById('gw').textContent = (gateway||'').replace('_',' ').toUpperCase();
+    const ref = p.get('ref');
+    const gateway = p.get('gateway');
+    const amount = p.get('amount');
+    
+    document.getElementById('gw').textContent = (gateway||'').replace(/_/g,' ').toUpperCase() + ' Payment';
     document.getElementById('amt').textContent = Number(amount||0).toLocaleString('en-US',{minimumFractionDigits:2}) + ' ETB';
 
     async function finish(kind){
-      document.getElementById('status').textContent='Processing...';
-      // Call the webhook the way a real gateway would (server re-verifies).
-      const res = await fetch('/api/payments/webhook/'+gateway,{
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ tx_ref: ref, status: kind })
-      });
-      const data = await res.json();
-      if(data.order_id){
-        location.href = '/order.html?id='+data.order_id;
-      } else {
-        document.getElementById('status').textContent = data.error || 'Done: '+(data.status||kind);
+      document.getElementById('status').textContent='Processing your ' + (kind==='success'?'payment':'request') + '...';
+      
+      try {
+        // Call the webhook the way a real gateway would (server re-verifies).
+        const res = await fetch('/api/payments/webhook/'+gateway,{
+          method:'POST', 
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ tx_ref: ref, status: kind })
+        });
+        const data = await res.json();
+        
+        if(data.order_id){
+          // Success - redirect to tickets page
+          setTimeout(()=>{
+            location.href = '/tickets.html?id='+data.order_id;
+          }, 1500);
+        } else {
+          // Show error
+          document.getElementById('status').textContent = data.error || 'Payment ' + kind + '. ' + (data.status||'');
+          document.getElementById('status').style.color = 'var(--danger)';
+        }
+      } catch(e) {
+        document.getElementById('status').textContent = 'Connection error. Try again.';
+        document.getElementById('status').style.color = 'var(--danger)';
       }
     }
   </script>

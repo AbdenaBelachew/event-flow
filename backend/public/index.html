@@ -3,140 +3,154 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Buy Tickets — Ticketing</title>
+  <title>TicketGate — Buy & manage event tickets</title>
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
   <div class="topbar">
     <div class="brand"><span class="dot"></span> TicketGate</div>
     <div class="nav">
-      <a href="/scanner.html">Scanner</a>
-      <a href="/dashboard.html">Dashboard</a>
+      <a href="/buy.html">🎟️ Buy tickets</a>
+      <a href="/tickets.html">🎫 My tickets</a>
+      <a href="/scanner.html">📱 Scanner</a>
+      <a href="/dashboard.html">📊 Organizer</a>
     </div>
   </div>
 
   <div class="container">
-    <div id="picker" class="card">
-      <h2>Open an event</h2>
-      <p class="muted small">Paste an event ID (see it printed by <code>npm run seed</code>, or the dashboard).</p>
-      <label>Event ID</label>
-      <input id="eventIdInput" placeholder="e.g. 3f2a...-...." />
-      <div style="margin-top:12px"><button class="btn" onclick="go()">Load event</button></div>
+    <!-- Hero -->
+    <div class="hero">
+      <h1>Real tickets.<br/>No paper, no hassle.</h1>
+      <p>Discover local events, pay securely with Chapa, Telebirr, or CBE Birr, and get QR-coded tickets you can pull up from any device.</p>
+      <div class="hero-actions">
+        <a class="btn" href="/buy.html">🎟️ Browse events</a>
+        <a class="btn secondary" href="/tickets.html">🎫 I already bought tickets</a>
+      </div>
     </div>
 
-    <div id="eventView" style="display:none">
-      <img id="cover" class="cover" alt="" style="display:none" />
-      <h1 id="title"></h1>
-      <p class="muted" id="meta"></p>
-      <div class="pill-row"><span id="saleBadge" class="badge"></span></div>
-      <p id="desc" class="muted" style="margin-top:12px"></p>
+    <!-- Featured events -->
+    <div class="section-h">
+      <h2>🔥 On sale now</h2>
+      <a href="/buy.html">See all →</a>
+    </div>
+    <div id="featuredArea">
+      <div class="loading-block"><div class="spinner"></div><div>Loading events…</div></div>
+    </div>
 
-      <div class="card">
-        <h2>Select tickets</h2>
-        <div id="tiers"></div>
-      </div>
+    <!-- Already-bought quick look -->
+    <div class="card" style="margin-top:24px">
+      <h2 style="margin-top:0">🔎 Quick lookup</h2>
+      <p class="muted small" style="margin:0 0 10px">Got an order ID or ticket code? Paste it to view your tickets — no login required.</p>
+      <form onsubmit="quickLookup(event)" style="display:flex;gap:8px;flex-wrap:wrap">
+        <input id="quickInput" placeholder="Order ID, ticket code, or confirmation link" style="flex:1;min-width:200px" />
+        <button class="btn" type="submit" style="white-space:nowrap">View</button>
+      </form>
+    </div>
 
-      <div class="card">
-        <h2>Your details</h2>
-        <div class="row">
-          <div><label>Full name</label><input id="buyerName" /></div>
-          <div><label>Phone</label><input id="buyerPhone" placeholder="+2519..." /></div>
+    <!-- How it works -->
+    <div class="card" style="margin-top:24px;background:transparent;border:none;box-shadow:none;padding:0">
+      <h3 style="margin:0 0 16px;color:var(--muted);font-size:14px;text-transform:uppercase;letter-spacing:0.08em">How it works</h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center">
+          <div style="font-size:24px;margin-bottom:8px">1️⃣</div>
+          <div style="font-weight:600;font-size:14px">Find event</div>
+          <div class="muted small" style="margin-top:4px">Browse upcoming shows</div>
         </div>
-        <label>Email</label><input id="buyerEmail" type="email" />
-        <label>Payment method</label>
-        <select id="gateway">
-          <option value="chapa">Chapa</option>
-          <option value="telebirr">Telebirr</option>
-          <option value="cbe_birr">CBE Birr</option>
-        </select>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:18px">
-          <div class="total">Total: <span class="etb" id="total">0.00 ETB</span></div>
-          <button class="btn" id="payBtn" onclick="checkout()">Pay & get tickets</button>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center">
+          <div style="font-size:24px;margin-bottom:8px">2️⃣</div>
+          <div style="font-weight:600;font-size:14px">Pick tickets</div>
+          <div class="muted small" style="margin-top:4px">Choose your tier & qty</div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center">
+          <div style="font-size:24px;margin-bottom:8px">3️⃣</div>
+          <div style="font-weight:600;font-size:14px">Pay securely</div>
+          <div class="muted small" style="margin-top:4px">Chapa • Telebirr • CBE Birr</div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center">
+          <div style="font-size:24px;margin-bottom:8px">4️⃣</div>
+          <div style="font-weight:600;font-size:14px">Get QR code</div>
+          <div class="muted small" style="margin-top:4px">Scan at the door</div>
         </div>
       </div>
     </div>
   </div>
 
   <div class="toast" id="toast"></div>
+
   <script>
-    let EVENT = null; let TYPES = []; const qty = {};
+    function toast(m, ms = 3000) {
+      const t = document.getElementById('toast');
+      t.textContent = m; t.style.display = 'block';
+      clearTimeout(toast._t);
+      toast._t = setTimeout(() => t.style.display = 'none', ms);
+    }
+    const money = n => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2 }) + ' ETB';
+    const fmtDate = s => new Date(s).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    function esc(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
 
-    function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.style.display='block'; setTimeout(()=>t.style.display='none',2600); }
-    function money(n){ return Number(n).toLocaleString('en-US',{minimumFractionDigits:2}) + ' ETB'; }
+    async function loadFeatured() {
+      const area = document.getElementById('featuredArea');
+      try {
+        const res = await fetch('/api/events');
+        if (!res.ok) throw new Error('Failed to load events');
+        const data = await res.json();
+        const events = (data.events || [])
+          .filter(e => e.status === 'published')
+          .sort((a, b) => new Date(a.event_start) - new Date(b.event_start))
+          .slice(0, 6);
 
-    function go(){ const id=document.getElementById('eventIdInput').value.trim(); if(id) location.search='?event='+encodeURIComponent(id); }
+        if (events.length === 0) {
+          area.innerHTML = `<div class="empty"><div class="icon">🎟️</div><h2>No events on sale right now</h2><p>Check back soon.</p></div>`;
+          return;
+        }
 
-    async function load(id){
-      const res = await fetch('/api/events/'+id+'/availability');
-      if(!res.ok){ toast('Event not found'); return; }
-      const data = await res.json();
-      EVENT = data.event; TYPES = data.ticket_types;
-      document.getElementById('picker').style.display='none';
-      document.getElementById('eventView').style.display='block';
-      document.getElementById('title').textContent = EVENT.title;
-      document.getElementById('meta').textContent = [EVENT.venue, EVENT.city].filter(Boolean).join(' · ') + ' · ' + new Date(EVENT.event_start).toLocaleString();
-      document.getElementById('desc').textContent = EVENT.description || '';
-      if(EVENT.cover_image_url){ const c=document.getElementById('cover'); c.src=EVENT.cover_image_url; c.style.display='block'; }
-      const b=document.getElementById('saleBadge');
-      b.textContent = data.on_sale ? 'On sale' : 'Sales closed';
-      b.className = 'badge ' + (data.on_sale ? 'on' : 'off');
+        const now = Date.now();
+        area.innerHTML = `<div class="event-grid">` + events.map(ev => {
+          const end = new Date(ev.sales_end).getTime();
+          const start = new Date(ev.sales_start).getTime();
+          let tag = '<span class="tag sale">On sale</span>';
+          if (now > end) tag = '<span class="tag sold">Closed</span>';
+          else if (now < start) tag = '<span class="tag soon">Soon</span>';
 
-      const wrap=document.getElementById('tiers'); wrap.innerHTML='';
-      TYPES.forEach(t=>{
-        qty[t.id]=0;
-        const el=document.createElement('div'); el.className='tier';
-        const soldTxt = t.sold_out ? 'Sold out' : (t.remaining + ' left');
-        el.innerHTML = `<div><div class="name">${t.name}</div><div class="muted small">${soldTxt}</div></div>
-          <div style="display:flex;align-items:center;gap:16px">
-            <div class="price">${money(t.price_etb)}</div>
-            <div class="qty">
-              <button class="btn secondary" ${!t.on_sale?'disabled':''} onclick="bump('${t.id}',-1)">−</button>
-              <input id="q_${t.id}" value="0" readonly />
-              <button class="btn secondary" ${!t.on_sale?'disabled':''} onclick="bump('${t.id}',1,${t.max_per_order},${t.remaining})">+</button>
+          const cover = ev.cover_image_url ? `<img src="${ev.cover_image_url}" alt="" />` : '';
+          const where = [ev.venue, ev.city].filter(Boolean).join(' • ');
+          return `<a class="event-card" href="/buy.html?event=${encodeURIComponent(ev.id)}">
+            <div class="cover-wrap">${cover}</div>
+            <div class="body">
+              <div class="title">${esc(ev.title)}</div>
+              <div class="meta">${esc(where || 'TBA')} • ${fmtDate(ev.event_start)}</div>
+              <div class="price-row">${tag}<div class="muted small">Tap to view →</div></div>
             </div>
-          </div>`;
-        wrap.appendChild(el);
-      });
-      recalc();
+          </a>`;
+        }).join('') + `</div>`;
+      } catch (e) {
+        console.error(e);
+        area.innerHTML = `<div class="empty"><div class="icon">⚠️</div><h2>Could not load events</h2><p>${esc(e.message)}</p></div>`;
+      }
     }
 
-    function bump(id,d,max,rem){
-      const next=(qty[id]||0)+d;
-      if(next<0) return;
-      if(d>0 && (next>max || next>rem)){ toast('Limit reached for this tier'); return; }
-      qty[id]=next; document.getElementById('q_'+id).value=next; recalc();
-    }
-    function recalc(){
-      let total=0; TYPES.forEach(t=> total += (qty[t.id]||0)*t.price_etb);
-      document.getElementById('total').textContent=money(total);
-      document.getElementById('payBtn').disabled = total<=0;
-    }
-
-    async function checkout(){
-      const items = TYPES.filter(t=>qty[t.id]>0).map(t=>({ticket_type_id:t.id, quantity:qty[t.id]}));
-      const body = {
-        event_id: EVENT.id,
-        buyer_name: document.getElementById('buyerName').value.trim(),
-        buyer_email: document.getElementById('buyerEmail').value.trim(),
-        buyer_phone: document.getElementById('buyerPhone').value.trim(),
-        items
-      };
-      if(!body.buyer_name||!body.buyer_email||!body.buyer_phone){ toast('Fill in your details'); return; }
-      document.getElementById('payBtn').disabled=true;
-      try{
-        const orderRes = await fetch('/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-        const order = await orderRes.json();
-        if(!orderRes.ok){ toast(order.error||'Order failed'); document.getElementById('payBtn').disabled=false; return; }
-        const payRes = await fetch('/api/orders/'+order.order.id+'/pay',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({gateway:document.getElementById('gateway').value})});
-        const pay = await payRes.json();
-        if(!payRes.ok){ toast(pay.error||'Payment init failed'); return; }
-        // Redirect to gateway checkout (mock in simulation mode).
-        window.location.href = pay.checkout_url;
-      }catch(e){ toast('Network error'); document.getElementById('payBtn').disabled=false; }
+    function quickLookup(e) {
+      e.preventDefault();
+      const raw = document.getElementById('quickInput').value.trim();
+      if (!raw) { toast('Paste an order ID or ticket code'); return; }
+      const linkMatch = raw.match(/[?&](?:id|code)=([0-9a-f-]{8,})/i);
+      if (linkMatch) {
+        const key = raw.includes('code=') ? 'code' : 'id';
+        location.href = '/tickets.html?' + key + '=' + encodeURIComponent(linkMatch[1]);
+        return;
+      }
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)) {
+        location.href = '/tickets.html?id=' + encodeURIComponent(raw);
+        return;
+      }
+      location.href = '/tickets.html?code=' + encodeURIComponent(raw);
     }
 
-    const params=new URLSearchParams(location.search);
-    if(params.get('event')) load(params.get('event'));
+    loadFeatured();
   </script>
 </body>
 </html>

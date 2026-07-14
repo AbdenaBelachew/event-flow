@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Buy Tickets — TicketGate</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand"><span class="dot"></span> TicketGate</div>
+    <div class="nav">
+      <a href="/">🏠 Home</a>
+      <a href="/tickets.html">🎫 My tickets</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="stepper" id="stepper">
+      <div class="step active" data-step="1"><span class="n">1</span> Event</div>
+      <span class="sep">›</span>
+      <div class="step" data-step="2"><span class="n">2</span> Tickets</div>
+      <span class="sep">›</span>
+      <div class="step" data-step="3"><span class="n">3</span> Your details</div>
+      <span class="sep">›</span>
+      <div class="step" data-step="4"><span class="n">4</span> Pay</div>
+    </div>
+
+    <!-- STEP 1: pick an event -->
+    <section id="stepEvents">
+      <div class="section-h">
+        <h2>🎟️ Choose an event</h2>
+        <span class="muted small" id="eventsCount"></span>
+      </div>
+      <div id="eventsArea">
+        <div class="loading-block"><div class="spinner"></div><div>Loading events…</div></div>
+      </div>
+    </section>
+
+    <!-- STEP 2: pick tickets -->
+    <section id="stepTickets" style="display:none">
+      <button class="btn secondary" onclick="goStep(1)" style="margin-bottom:14px">← Back to events</button>
+      <div id="eventHeader"></div>
+      <div class="card" id="tiersArea" style="margin-top:14px">
+        <h2 style="margin-top:0">🎫 Select tickets</h2>
+        <div id="tiersWrap"><div class="loading-block"><div class="spinner"></div><div>Loading tickets…</div></div></div>
+      </div>
+      <div class="card" id="buyerCard" style="margin-top:14px;display:none">
+        <h2 style="margin-top:0">👤 Your details</h2>
+        <div class="row">
+          <div><label>Full name *</label><input id="buyerName" placeholder="John Doe" /></div>
+          <div><label>Phone *</label><input id="buyerPhone" placeholder="+251912345678" type="tel" /></div>
+        </div>
+        <label>Email address *</label><input id="buyerEmail" type="email" placeholder="you@example.com" />
+
+        <label style="margin-top:14px">Payment method</label>
+        <select id="gateway">
+          <option value="chapa">💳 Chapa</option>
+          <option value="telebirr">📱 Telebirr</option>
+          <option value="cbe_birr">🏦 CBE Birr</option>
+        </select>
+
+        <div class="divider"></div>
+        <div id="summary"></div>
+        <button class="btn block" id="payBtn" onclick="checkout()" style="margin-top:14px;padding:14px">Proceed to payment</button>
+        <p class="muted small" style="text-align:center;margin-top:10px">You'll be redirected to the payment gateway to complete your purchase.</p>
+      </div>
+    </section>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const EVENT_ID = params.get('event');
+
+    let EVENT = null;
+    let TYPES = [];
+    const qty = {};
+
+    // ---------- helpers ----------
+    function toast(m, ms = 3000) {
+      const t = document.getElementById('toast');
+      t.textContent = m;
+      t.style.display = 'block';
+      clearTimeout(toast._t);
+      toast._t = setTimeout(() => t.style.display = 'none', ms);
+    }
+    const money = n => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2 }) + ' ETB';
+    const fmtDate = s => new Date(s).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+    function goStep(n) {
+      document.querySelectorAll('#stepper .step').forEach(s => s.classList.toggle('active', Number(s.dataset.step) <= n));
+      document.getElementById('stepEvents').style.display = n === 1 ? 'block' : 'none';
+      document.getElementById('stepTickets').style.display = n >= 2 ? 'block' : 'none';
+      if (n >= 2) window.scrollTo(0, 0);
+    }
+
+    // ---------- STEP 1: events ----------
+    async function loadEvents() {
+      const area = document.getElementById('eventsArea');
+      try {
+        const res = await fetch('/api/events');
+        if (!res.ok) throw new Error('Failed to load events');
+        const data = await res.json();
+        const events = (data.events || []).filter(e => e.status === 'published');
+        document.getElementById('eventsCount').textContent = events.length + ' on sale';
+
+        if (events.length === 0) {
+          area.innerHTML = `<div class="empty">
+            <div class="icon">🎟️</div>
+            <h2>No events available right now</h2>
+            <p>Check back soon — new events are added all the time.</p>
+          </div>`;
+          return;
+        }
+
+        const now = Date.now();
+        const cards = events.map(ev => {
+          const start = new Date(ev.event_start).getTime();
+          const end = new Date(ev.sales_end).getTime();
+          let tag = '<span class="tag sale">On sale</span>';
+          if (now > end) tag = '<span class="tag sold">Sales closed</span>';
+          else if (now < new Date(ev.sales_start).getTime()) tag = '<span class="tag soon">Coming soon</span>';
+
+          const cover = ev.cover_image_url
+            ? `<img src="${ev.cover_image_url}" alt="" />`
+            : '';
+
+          const where = [ev.venue, ev.city].filter(Boolean).join(' • ');
+          return `<a class="event-card" href="/buy.html?event=${encodeURIComponent(ev.id)}">
+            <div class="cover-wrap">${cover}</div>
+            <div class="body">
+              <div class="title">${escapeHtml(ev.title)}</div>
+              <div class="meta">${escapeHtml(where || 'TBA')} • ${fmtDate(ev.event_start)}</div>
+              <div class="price-row">
+                ${tag}
+                <div style="text-align:right">
+                  <div class="from">From</div>
+                  <div class="from-price">${money(priceHint(ev))}</div>
+                </div>
+              </div>
+            </div>
+          </a>`;
+        }).join('');
+
+        area.innerHTML = `<div class="event-grid">${cards}</div>`;
+      } catch (e) {
+        console.error(e);
+        area.innerHTML = `<div class="empty"><div class="icon">⚠️</div><h2>Could not load events</h2><p>${escapeHtml(e.message)}</p></div>`;
+      }
+    }
+
+    // The list endpoint doesn't include ticket_types, so we use a placeholder until
+    // the user opens the event and we fetch availability (which has real prices).
+    // We optimistically show "—" and let the detail page render real prices.
+    function priceHint(ev) { return '—'; }
+
+    // ---------- STEP 2..4: event detail ----------
+    async function loadEvent(id) {
+      const wrap = document.getElementById('tiersWrap');
+      const header = document.getElementById('eventHeader');
+      try {
+        const res = await fetch('/api/events/' + encodeURIComponent(id) + '/availability');
+        if (!res.ok) throw new Error('Event not found');
+        const data = await res.json();
+        EVENT = data.event;
+        TYPES = data.ticket_types || [];
+
+        header.innerHTML = `
+          ${EVENT.cover_image_url ? `<img class="cover" src="${EVENT.cover_image_url}" alt="" />` : ''}
+          <div style="display:flex;justify-content:space-between;align-items:start;gap:20px;flex-wrap:wrap">
+            <div>
+              <h1 style="margin:0">${escapeHtml(EVENT.title)}</h1>
+              <p class="muted" style="margin:6px 0 0">${escapeHtml([EVENT.venue, EVENT.city].filter(Boolean).join(' • ') || 'TBA')} • ${fmtDate(EVENT.event_start)}</p>
+            </div>
+            <div>${data.on_sale ? '<span class="tag sale">✓ On sale</span>' : '<span class="tag sold">Sales closed</span>'}</div>
+          </div>
+          ${EVENT.description ? `<p class="muted" style="margin-top:14px">${escapeHtml(EVENT.description)}</p>` : ''}
+        `;
+
+        if (TYPES.length === 0) {
+          wrap.innerHTML = `<div class="empty"><div class="icon">🎫</div><h2>No ticket types available</h2><p>This event isn't selling tickets right now.</p></div>`;
+          return;
+        }
+
+        wrap.innerHTML = TYPES.map(t => {
+          qty[t.id] = 0;
+          const availTxt = t.sold_out ? '❌ Sold out' : ('📍 ' + t.remaining + ' left');
+          const disabled = !t.on_sale ? 'disabled' : '';
+          return `<div class="tier" data-tier="${t.id}">
+            <div style="flex:1">
+              <div class="name">${escapeHtml(t.name)}</div>
+              <div class="muted small">${availTxt} • max ${t.max_per_order}/order</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:16px">
+              <div class="price">${money(t.price_etb)}</div>
+              <div class="qty">
+                <button class="btn secondary" ${disabled} onclick="bump('${t.id}',-1)">−</button>
+                <input id="q_${t.id}" value="0" readonly />
+                <button class="btn secondary" ${disabled} onclick="bump('${t.id}',1,${t.max_per_order},${t.remaining})">+</button>
+              </div>
+            </div>
+          </div>`;
+        }).join('');
+
+        recalc();
+      } catch (e) {
+        console.error(e);
+        wrap.innerHTML = `<div class="empty"><div class="icon">⚠️</div><h2>Could not load event</h2><p>${escapeHtml(e.message)}</p></div>`;
+      }
+    }
+
+    function bump(id, d, max, rem) {
+      const next = (qty[id] || 0) + d;
+      if (next < 0) return;
+      if (d > 0 && (next > max || next > rem)) {
+        toast("You've reached the limit for this ticket type");
+        return;
+      }
+      qty[id] = next;
+      document.getElementById('q_' + id).value = next;
+      recalc();
+    }
+
+    function recalc() {
+      const total = TYPES.reduce((s, t) => s + (qty[t.id] || 0) * t.price_etb, 0);
+      const count = TYPES.reduce((s, t) => s + (qty[t.id] || 0), 0);
+      const lines = TYPES.filter(t => qty[t.id] > 0)
+        .map(t => `<div class="summary-row"><span class="lbl">${escapeHtml(t.name)} × ${qty[t.id]}</span><span>${money(qty[t.id] * t.price_etb)}</span></div>`)
+        .join('');
+      document.getElementById('summary').innerHTML = `
+        ${lines || '<p class="muted small" style="margin:0">No tickets selected yet.</p>'}
+        <div class="summary-row total"><span>Total (${count} ticket${count !== 1 ? 's' : ''})</span><span class="total" style="font-size:18px">${money(total)}</span></div>
+      `;
+      document.getElementById('buyerCard').style.display = count > 0 ? 'block' : 'none';
+      document.getElementById('payBtn').disabled = count === 0;
+    }
+
+    async function checkout() {
+      const items = TYPES.filter(t => qty[t.id] > 0).map(t => ({ ticket_type_id: t.id, quantity: qty[t.id] }));
+      const name = document.getElementById('buyerName').value.trim();
+      const email = document.getElementById('buyerEmail').value.trim();
+      const phone = document.getElementById('buyerPhone').value.trim();
+
+      if (!name || !email || !phone) { toast('Please fill in all your details'); return; }
+      if (!email.includes('@')) { toast('Please enter a valid email'); return; }
+      if (items.length === 0) { toast('Please select at least one ticket'); return; }
+
+      const btn = document.getElementById('payBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Creating order…';
+
+      try {
+        const orderRes = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event_id: EVENT.id, buyer_name: name, buyer_email: email, buyer_phone: phone, items })
+        });
+        const order = await orderRes.json();
+        if (!orderRes.ok) throw new Error(order.error || 'Failed to create order');
+
+        btn.innerHTML = '<span class="spinner"></span> Redirecting to payment…';
+
+        const payRes = await fetch('/api/orders/' + order.order.id + '/pay', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gateway: document.getElementById('gateway').value })
+        });
+        const pay = await payRes.json();
+        if (!payRes.ok) throw new Error(pay.error || 'Payment setup failed');
+
+        window.location.href = pay.checkout_url;
+      } catch (e) {
+        console.error(e);
+        toast(e.message || 'Something went wrong');
+        btn.disabled = false;
+        btn.textContent = 'Proceed to payment';
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    // ---------- boot ----------
+    if (EVENT_ID) {
+      goStep(2);
+      loadEvent(EVENT_ID);
+    } else {
+      loadEvents();
+    }
+  </script>
+</body>
+</html>

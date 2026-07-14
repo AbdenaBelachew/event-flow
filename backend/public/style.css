@@ -107,11 +107,132 @@ table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px
 th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--border); }
 th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
 
-.result-banner { padding: 22px; border-radius: 14px; text-align: center; font-size: 22px; font-weight: 800; margin-top: 14px; }
+.result-banner { padding: 22px; border-radius: 14px; text-align: center; font-size: 18px; font-weight: 800; margin-top: 14px; animation: slideUp 0.3s ease; }
 .result-success { background: rgba(16,185,129,0.15); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.4); }
 .result-fail { background: rgba(239,68,68,0.12); color: #fca5a5; border: 1px solid rgba(239,68,68,0.35); }
 .result-warn { background: rgba(245,158,11,0.12); color: #fcd34d; border: 1px solid rgba(245,158,11,0.35); }
 
-.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--surface-2); border: 1px solid var(--border); padding: 12px 18px; border-radius: 10px; box-shadow: var(--shadow); display: none; }
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--surface-2); border: 1px solid var(--border); padding: 14px 20px; border-radius: 10px; box-shadow: var(--shadow); display: none; animation: slideUp 0.3s ease; z-index: 10; }
 #reader { border-radius: 12px; overflow: hidden; }
 .pill-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+
+/* Animations */
+@keyframes slideUp { from { transform: translateX(-50%) translateY(20px); opacity: 0; } to { transform: translateX(-50%) translateY(0); opacity: 1; } }
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .container { padding: 16px 16px 60px; }
+  h1 { font-size: 24px; }
+  .topbar { padding: 12px 16px; }
+  .nav a { margin-left: 12px; font-size: 13px; }
+  .grid-stats { grid-template-columns: repeat(2, 1fr); }
+  .row { grid-template-columns: 1fr; }
+  table { font-size: 13px; }
+  th, td { padding: 6px 4px; }
+}
+
+/* Mobile optimizations */
+@media (max-width: 480px) {
+  .container { max-width: 100%; padding: 12px; }
+  .card { padding: 16px; }
+  h1 { font-size: 20px; margin: 4px 0; }
+  h2 { font-size: 16px; }
+  .btn { padding: 10px 16px; font-size: 14px; }
+  .tier { flex-direction: column; align-items: flex-start; }
+  .qty { width: 100%; margin-top: 8px; }
+  .qty input { flex: 1; }
+  .total { font-size: 18px; }
+}
+
+/* ========== Shared helpers for new pages (buy/tickets/landing) ========== */
+
+/* Hero — for landing page */
+.hero {
+  position: relative;
+  border-radius: 18px;
+  overflow: hidden;
+  padding: 56px 32px;
+  background:
+    linear-gradient(135deg, rgba(16,185,129,0.22) 0%, rgba(244,197,66,0.14) 100%),
+    radial-gradient(800px 400px at 80% 0%, #1a3a2a 0%, transparent 60%),
+    var(--surface);
+  border: 1px solid var(--border);
+  margin-bottom: 24px;
+}
+.hero h1 { font-size: 40px; margin: 0 0 12px; letter-spacing: -0.025em; }
+.hero p { font-size: 16px; max-width: 540px; color: var(--muted); margin: 0 0 22px; }
+.hero .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+@media (max-width: 560px) { .hero { padding: 36px 22px; } .hero h1 { font-size: 30px; } }
+
+/* Event grid — used on landing and buy */
+.event-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.event-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+  display: flex; flex-direction: column;
+  text-decoration: none; color: inherit;
+  cursor: pointer;
+}
+.event-card:hover { transform: translateY(-2px); border-color: rgba(16,185,129,0.45); }
+.event-card .cover-wrap { aspect-ratio: 16/9; background: linear-gradient(135deg, #1a3a2a, #2a1f1a); overflow: hidden; }
+.event-card .cover-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.event-card .body { padding: 16px; }
+.event-card .title { font-size: 17px; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01em; }
+.event-card .meta { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+.event-card .price-row { display: flex; align-items: center; justify-content: space-between; padding-top: 10px; border-top: 1px solid var(--border); }
+.event-card .from { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.event-card .from-price { font-size: 16px; font-weight: 700; color: var(--accent); }
+
+/* Stepper — for buy flow */
+.stepper { display: flex; align-items: center; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
+.stepper .step { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); font-size: 13px; color: var(--muted); }
+.stepper .step .n { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; background: var(--bg); font-size: 12px; }
+.stepper .step.active { color: var(--text); border-color: rgba(16,185,129,0.4); background: rgba(16,185,129,0.08); }
+.stepper .step.active .n { background: var(--primary); color: var(--primary-ink); }
+.stepper .sep { color: var(--muted); font-size: 18px; }
+
+/* Empty state */
+.empty { text-align: center; padding: 48px 20px; color: var(--muted); }
+.empty .icon { font-size: 48px; margin-bottom: 8px; }
+.empty h2 { color: var(--text); margin: 0 0 6px; }
+.empty p { margin: 0; font-size: 14px; }
+
+/* Spinner */
+.spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.25); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-block { text-align: center; padding: 40px 20px; color: var(--muted); }
+.loading-block .spinner { width: 28px; height: 28px; border-width: 3px; margin-bottom: 10px; }
+
+/* Ticket detail card */
+.ticket-detail {
+  display: grid; grid-template-columns: 200px 1fr; gap: 24px; align-items: center;
+  padding: 20px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 14px; margin-top: 12px;
+}
+.ticket-detail img { width: 200px; height: 200px; background: #fff; border-radius: 12px; padding: 10px; }
+.ticket-detail .info .evtitle { font-size: 20px; font-weight: 800; margin: 0 0 4px; letter-spacing: -0.01em; }
+.ticket-detail .info .when { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+.ticket-detail .info .code { font-family: ui-monospace, Menlo, monospace; font-size: 15px; letter-spacing: 0.04em; padding: 6px 10px; background: var(--bg); border: 1px dashed var(--border); border-radius: 8px; display: inline-block; }
+@media (max-width: 560px) { .ticket-detail { grid-template-columns: 1fr; text-align: center; } .ticket-detail img { margin: 0 auto; } }
+
+/* Order summary */
+.summary-row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 14px; }
+.summary-row.total { font-size: 18px; font-weight: 800; padding-top: 12px; border-top: 1px solid var(--border); margin-top: 8px; }
+.summary-row .lbl { color: var(--muted); }
+
+/* Section header */
+.section-h { display: flex; align-items: baseline; justify-content: space-between; margin: 0 0 14px; }
+.section-h h2 { margin: 0; }
+.section-h a { font-size: 13px; color: var(--muted); text-decoration: none; }
+.section-h a:hover { color: var(--primary); }
+
+/* Divider */
+.divider { height: 1px; background: var(--border); margin: 18px 0; }
+
+/* Tag */
+.tag { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
+.tag.sale { background: rgba(16,185,129,0.12); color: var(--primary); border-color: rgba(16,185,129,0.35); }
+.tag.soon { background: rgba(245,158,11,0.12); color: #fcd34d; border-color: rgba(245,158,11,0.35); }
+.tag.sold { background: rgba(239,68,68,0.1); color: #fca5a5; border-color: rgba(239,68,68,0.3); }

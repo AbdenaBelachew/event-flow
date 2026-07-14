@@ -3,45 +3,22 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Your tickets — Ticketing</title>
+  <title>Tickets — TicketGate</title>
   <link rel="stylesheet" href="/style.css" />
+  <meta http-equiv="refresh" content="0; url=/tickets.html" />
+  <script>
+    // Forward any existing ?id=... or ?code=... query string to /tickets.html
+    const p = new URLSearchParams(location.search);
+    const id = p.get('id');
+    const code = p.get('code');
+    if (id)   location.replace('/tickets.html?id=' + encodeURIComponent(id));
+    else if (code) location.replace('/tickets.html?code=' + encodeURIComponent(code));
+    else      location.replace('/tickets.html');
+  </script>
 </head>
 <body>
-  <div class="topbar"><div class="brand"><span class="dot"></span> TicketGate</div><div class="nav"><a href="/">Buy more</a></div></div>
   <div class="container">
-    <h1>Your order</h1>
-    <div id="status"></div>
-    <div id="tickets"></div>
+    <p class="muted">Redirecting to <a href="/tickets.html">/tickets.html</a>…</p>
   </div>
-  <script>
-    const id = new URLSearchParams(location.search).get('id');
-    async function load(){
-      const res = await fetch('/api/orders/'+id);
-      const data = await res.json();
-      if(!res.ok){ document.getElementById('status').innerHTML='<div class="card">Order not found</div>'; return; }
-      const o = data.order;
-      const paid = o.status === 'paid';
-      document.getElementById('status').innerHTML =
-        `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center">
-          <div><div class="muted small">Order ${o.id}</div><div class="total">${Number(o.total_amount_etb).toLocaleString('en-US',{minimumFractionDigits:2})} ETB</div></div>
-          <span class="badge ${paid?'on':'off'}">${o.status.toUpperCase()}</span>
-        </div></div>`;
-
-      const wrap=document.getElementById('tickets');
-      if(!paid){ wrap.innerHTML='<div class="card muted">Tickets appear here once payment is confirmed.</div>'; return; }
-      wrap.innerHTML='<div class="card"><h2>Tickets</h2><div id="list"></div></div>';
-      const list=document.getElementById('list');
-      for(const t of data.tickets){
-        const q = await fetch('/api/tickets/'+t.ticket_code).then(r=>r.json());
-        const el=document.createElement('div'); el.className='ticket';
-        el.innerHTML = `<img src="${q.qr_data_url}" alt="QR"/>
-          <div><div class="muted small">${t.ticket_type}</div>
-          <div class="code">${t.ticket_code}</div>
-          <div class="muted small">Holder: ${t.holder_name||'—'} · <span class="badge ${t.status==='used'?'off':'on'}">${t.status}</span></div></div>`;
-        list.appendChild(el);
-      }
-    }
-    load();
-  </script>
 </body>
 </html>

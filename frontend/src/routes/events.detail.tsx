@@ -3,15 +3,34 @@ import { useQuery } from '@tanstack/react-query'
 import { eventsAPI } from '../lib/api'
 import Card, { CardContent, CardHeader } from '../components/Card'
 import Button from '../components/Button'
-import Alert from '../components/Alert'
-import { Calendar, MapPin, TrendingUp, Ticket } from 'lucide-react'
-import { format } from 'date-fns'
+import {
+  Calendar,
+  MapPin,
+  TrendingUp,
+  Ticket,
+  Clock,
+  Users,
+  Share2,
+  Check,
+  Edit3,
+  ScanLine,
+  ArrowLeft,
+  Info,
+  AlertTriangle,
+  CalendarOff,
+  RefreshCw,
+  Shield,
+} from 'lucide-react'
+import { format, formatDistanceToNow, isFuture, isPast, differenceInDays } from 'date-fns'
+import { useMemo, useState, useEffect } from 'react'
+import { buildEventShareLink } from '../lib/slug'
 
 export default function EventDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [copySuccess, setCopySuccess] = useState(false)
 
-  const { data: event, isLoading, isError } = useQuery({
+  const { data: event, isLoading, isError, refetch } = useQuery({
     queryKey: ['events', id],
     queryFn: () => eventsAPI.getEvent(id!).then((res) => res.data.event),
   })
@@ -21,123 +40,629 @@ export default function EventDetailPage() {
     queryFn: () => eventsAPI.getAvailability(id!).then((res) => res.data),
   })
 
+  // Build a human-readable share link once the event is loaded.
+  const shareLink = useMemo(() => {
+    if (typeof window === 'undefined') return ''
+    const title = event?.title || ''
+    return buildEventShareLink(window.location.origin, title)
+  }, [event?.title])
+
+  // ---- derived timing data ----
+  const timing = useMemo(() => {
+    if (!event?.event_start) return null
+    const start = new Date(event.event_start)
+    const end = event.event_end ? new Date(event.event_end) : null
+    const upcoming = isFuture(start)
+    const ongoing = !upcoming && end ? !isPast(end) : false
+    const daysUntil = upcoming ? differenceInDays(start, new Date()) : 0
+    return { start, end, upcoming, ongoing, daysUntil }
+  }, [event?.event_start, event?.event_end])
+
+  const handleCopyLink = async () => {
+    if (!shareLink) return
+    try {
+      await navigator.clipboard.writeText(shareLink)
+    } catch {
+      // Fallback for non-secure contexts
+      const ta = document.createElement('textarea')
+      ta.value = shareLink
+      document.body.appendChild(ta)
+      ta.select()
+      try {
+        document.execCommand('copy')
+      } catch {
+        /* ignore */
+      }
+      document.body.removeChild(ta)
+    }
+    setCopySuccess(true)
+  }
+
+  useEffect(() => {
+    if (!copySuccess) return
+    const t = setTimeout(() => setCopySuccess(false), 2000)
+    return () => clearTimeout(t)
+  }, [copySuccess])
+
+  // ---- derived status pill ----
+  const statusPill = useMemo(() => {
+    if (!event) return null
+    const isPublished = event.status === 'published'
+    const isDraft = event.status === 'draft'
+    const isCancelled = event.status === 'cancelled'
+    const ticketTypes: any[] = availability?.ticket_types || []
+    const allSoldOut =
+      ticketTypes.length > 0 && ticketTypes.every((t) => t.sold_out || !t.on_sale)
+
+    if (isCancelled) {
+      return {
+        label: 'Cancelled',
+        className: 'bg-red-500/90 text-white',
+        dot: 'bg-white',
+      }
+    }
+    if (allSoldOut) {
+      return {
+        label: 'Sold Out',
+        className: 'bg-red-500/90 text-white',
+        dot: 'bg-white',
+      }
+    }
+    if (timing && !timing.upcoming && !timing.ongoing) {
+      return {
+        label: 'Event Ended',
+        className: 'bg-gray-800/80 text-white',
+        dot: 'bg-gray-300',
+      }
+    }
+    if (timing?.ongoing) {
+      return {
+        label: 'Happening Now',
+        className: 'bg-brand-500/90 text-white',
+        dot: 'bg-white',
+      }
+    }
+    if (isDraft) {
+      return {
+        label: 'Draft',
+        className: 'bg-amber-500/90 text-white',
+        dot: 'bg-white',
+      }
+    }
+    if (timing && timing.upcoming && timing.daysUntil <= 7) {
+      return {
+        label: timing.daysUntil === 0 ? 'Today' : `${timing.daysUntil}d to go`,
+        className: 'bg-amber-500/90 text-white',
+        dot: 'bg-white',
+      }
+    }
+    if (isPublished) {
+      return {
+        label: 'On Sale',
+        className: 'bg-brand-500/90 text-white',
+        dot: 'bg-white',
+      }
+    }
+    return null
+  }, [event, availability, timing])
+
+  // ---- loading state ----
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="flex-1 flex items-center justify-center min-h-screen bg-gradient-to-br from-brand-50 via-white to-brand-50 py-20">
+        <div className="text-center px-4">
+          <div className="relative w-20 h-20 xs:w-24 xs:h-24 sm:w-28 sm:h-28 mx-auto mb-6">
+            <div className="absolute inset-0 rounded-full border-4 border-brand-200 animate-pulse"></div>
+            <div className="absolute inset-0 rounded-full border-4 border-t-brand-600 border-r-transparent border-b-transparent border-l-transparent animate-spin"></div>
+            <div className="absolute inset-3 rounded-full bg-gradient-to-br from-brand-500 to-brand-500 animate-pulse flex items-center justify-center">
+              <Ticket className="w-8 h-8 xs:w-10 xs:h-10 text-white" />
+            </div>
+          </div>
+          <h2 className="text-xl xs:text-2xl sm:text-3xl font-bold text-gray-900 mb-2 animate-pulse">
+            Loading Event...
+          </h2>
+          <p className="text-sm xs:text-base text-gray-600">Please wait while we fetch the details</p>
+        </div>
       </div>
     )
   }
 
+  // ---- error state ----
   if (isError || !event) {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <Alert type="error" message="Failed to load event" />
+      <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-orange-50 flex items-center justify-center py-12 px-4">
+        <div className="max-w-md xs:max-w-lg sm:max-w-xl w-full">
+          <div className="bg-white rounded-2xl xs:rounded-3xl shadow-2xl border border-red-100 p-6 xs:p-8 sm:p-10 text-center transform hover:scale-105 transition-transform duration-300">
+            <div className="relative mb-6">
+              <div className="w-20 h-20 xs:w-24 xs:h-24 rounded-full bg-gradient-to-br from-red-100 to-orange-100 flex items-center justify-center mx-auto animate-bounce">
+                <AlertTriangle className="w-10 h-10 xs:w-12 xs:h-12 text-red-500" />
+              </div>
+              <div className="absolute inset-0 rounded-full bg-red-400 opacity-20 blur-2xl animate-pulse"></div>
+            </div>
+            
+            <h1 className="text-2xl xs:text-3xl sm:text-4xl font-bold text-gray-900 mb-3 xs:mb-4">
+              Oops! Event Not Found
+            </h1>
+            <p className="text-base xs:text-lg text-gray-600 mb-6 xs:mb-8 leading-relaxed">
+              The event you're looking for might have been removed or you don't have permission to view it.
+            </p>
+            
+            <div className="flex flex-col xs:flex-row gap-3 xs:gap-4 justify-center">
+              <Button 
+                onClick={() => refetch()} 
+                size="lg"
+                className="bg-gradient-to-r from-brand-600 to-brand-600 hover:from-brand-700 hover:to-brand-700 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-200 active:scale-95"
+              >
+                <RefreshCw className="w-5 h-5 mr-2" />
+                Try Again
+              </Button>
+              <Button 
+                variant="secondary" 
+                size="lg"
+                onClick={() => navigate('/dashboard')}
+                className="border-2 border-gray-300 hover:border-gray-400 hover:bg-gray-50 font-semibold transition-all duration-200 active:scale-95"
+              >
+                <ArrowLeft className="w-5 h-5 mr-2" />
+                Back to Dashboard
+              </Button>
+            </div>
+          </div>
+        </div>
       </div>
     )
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Button variant="ghost" onClick={() => navigate('/dashboard')} className="mb-6">
-          ← Back to Dashboard
-        </Button>
+  const ticketTypes: any[] = availability?.ticket_types || []
+  const hasOnSale = ticketTypes.some((t) => t.on_sale)
+  const allSoldOut =
+    ticketTypes.length > 0 && ticketTypes.every((t) => t.sold_out || !t.on_sale)
+  const totalRemaining = ticketTypes.reduce(
+    (sum, t) => sum + Math.max(0, t.remaining || 0),
+    0
+  )
+  const minPrice =
+    ticketTypes.length > 0
+      ? Math.min(...ticketTypes.map((t) => Number(t.price_etb) || 0))
+      : null
+  const isPublished = event.status === 'published'
 
-        {/* Hero */}
-        {event.cover_image_url && (
-          <div className="w-full h-64 md:h-96 rounded-lg overflow-hidden mb-8">
+  return (
+    <div className="flex-1 bg-gradient-to-br from-gray-50 via-brand-50/30 to-brand-50/30 min-h-screen">
+      {/* ---- HERO ---- */}
+      <div className="relative overflow-hidden">
+        {event.cover_image_url ? (
+          <div className="relative h-[220px] xs:h-[240px] sm:h-[280px] md:h-[320px] lg:h-[400px] xl:h-[460px] w-full overflow-hidden bg-gray-900">
             <img
               src={event.cover_image_url}
               alt={event.title}
-              className="w-full h-full object-cover"
+              className="w-full h-full object-cover transform hover:scale-105 transition-transform duration-700"
+              loading="eager"
             />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-black/30" />
+            {/* Animated overlay */}
+            <div className="absolute inset-0 bg-gradient-to-br from-brand-600/10 via-transparent to-brand-600/10 animate-pulse"></div>
+          </div>
+        ) : (
+          <div className="relative h-[200px] xs:h-[220px] sm:h-[260px] md:h-[300px] lg:h-[360px] xl:h-[420px] w-full bg-gradient-to-br from-brand-600 via-brand-600 to-brand-600 overflow-hidden">
+            {/* Animated background pattern */}
+            <div
+              className="absolute inset-0 opacity-30 animate-pulse"
+              style={{
+                backgroundImage:
+                  'radial-gradient(circle at 30% 20%, white 2px, transparent 2px), radial-gradient(circle at 70% 60%, white 2px, transparent 2px)',
+                backgroundSize: '50px 50px',
+              }}
+            />
+            {/* Moving gradient overlay */}
+            <div className="absolute inset-0 bg-gradient-to-tr from-brand-600/20 via-transparent to-brand-600/20 animate-pulse"></div>
+            {/* Decorative circles */}
+            <div className="absolute top-10 right-10 w-32 h-32 bg-white/10 rounded-full blur-3xl animate-bounce"></div>
+            <div className="absolute bottom-10 left-10 w-40 h-40 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
           </div>
         )}
 
-        {/* Header */}
-        <div className="flex justify-between items-start mb-6">
-          <div>
-            <h1 className="text-4xl font-bold text-gray-900 mb-2">{event.title}</h1>
-            <div className="flex flex-wrap gap-4 text-gray-600">
-              <div className="flex items-center space-x-2">
-                <Calendar className="w-5 h-5" />
-                <span>{format(new Date(event.event_start), 'MMM d, yyyy HH:mm')}</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <MapPin className="w-5 h-5" />
-                <span>
-                  {event.venue} {event.city && `· ${event.city}`}
-                </span>
-              </div>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={() => navigate(`/events/${event.id}/edit`)}>Edit Event</Button>
-            <Button variant="secondary" onClick={() => navigate(`/events/${event.id}/stats`)}>
-              <TrendingUp className="w-4 h-4 mr-2" />
-              Stats
-            </Button>
+        {/* Top bar over hero */}
+        <div className="absolute top-0 left-0 right-0 z-10">
+          <div className="max-w-6xl mx-auto px-3 xs:px-4 sm:px-5 md:px-6 lg:px-8 py-3 xs:py-3.5 sm:py-4 flex items-center justify-between gap-2 xs:gap-2.5 sm:gap-3">
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="inline-flex items-center gap-1.5 xs:gap-2 rounded-full bg-white/90 backdrop-blur-sm xs:backdrop-blur px-2.5 xs:px-3 sm:px-3.5 py-2 xs:py-2.5 sm:py-2.5 text-xs xs:text-[13px] sm:text-sm font-medium text-gray-800 shadow-sm xs:shadow hover:bg-white hover:shadow-md transition-all duration-200 min-h-[38px] xs:min-h-[40px] sm:min-h-[44px] active:scale-95"
+              aria-label="Back to Dashboard"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 xs:w-4 xs:h-4 sm:w-4.5 sm:h-4.5" />
+              <span className="hidden xs:inline xs:mr-0.5">Back to</span>
+              <span className="inline xs:hidden">Back</span>
+              <span className="hidden sm:inline ml-0.5">Dashboard</span>
+            </button>
+
+            <button
+              onClick={handleCopyLink}
+              disabled={!shareLink}
+              className="inline-flex items-center gap-1.5 xs:gap-2 rounded-full bg-white/90 backdrop-blur-sm xs:backdrop-blur px-2.5 xs:px-3 sm:px-3.5 py-2 xs:py-2.5 sm:py-2.5 text-xs xs:text-[13px] sm:text-sm font-medium text-gray-800 shadow-sm xs:shadow hover:bg-white hover:shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed min-h-[38px] xs:min-h-[40px] sm:min-h-[44px] active:scale-95"
+              aria-label={copySuccess ? "Link copied" : "Share event"}
+            >
+              {copySuccess ? (
+                <>
+                  <Check className="w-3.5 h-3.5 xs:w-4 xs:h-4 sm:w-4.5 sm:h-4.5 text-brand-600" />
+                  <span className="hidden xs:inline">Copied</span>
+                  <span className="inline xs:hidden">Done</span>
+                </>
+              ) : (
+                <>
+                  <Share2 className="w-3.5 h-3.5 xs:w-4 xs:h-4 sm:w-4.5 sm:h-4.5" />
+                  <span className="hidden xs:inline">Share</span>
+                  <span className="inline xs:hidden">Share</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
 
-        {/* Description */}
-        <Card className="mb-6">
-          <CardContent>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">About</h2>
-            <p className="text-gray-600 whitespace-pre-wrap">{event.description}</p>
-          </CardContent>
-        </Card>
+        {/* Title block over hero */}
+        <div className="absolute bottom-0 left-0 right-0 z-10">
+          <div className="max-w-6xl mx-auto px-3 xs:px-4 sm:px-5 md:px-6 lg:px-8 pb-4 xs:pb-5 sm:pb-6 md:pb-8 lg:pb-10 xl:pb-12">
+            <div className="flex flex-wrap items-center gap-1.5 xs:gap-2 sm:gap-2.5 mb-3 xs:mb-3.5 sm:mb-4">
+              {statusPill && (
+                <span
+                  className={`inline-flex items-center gap-1 xs:gap-1.5 rounded-full px-2 xs:px-2.5 sm:px-3 py-1 xs:py-1 sm:py-1.5 text-[10px] xs:text-[11px] sm:text-xs font-semibold tracking-wide shadow-sm ${statusPill.className}`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 xs:w-1.5 xs:h-1.5 sm:w-2 sm:h-2 rounded-full ${statusPill.dot} animate-pulse`}
+                  />
+                  {statusPill.label}
+                </span>
+              )}
+              {event.city && (
+                <span className="inline-flex items-center gap-1 xs:gap-1.5 rounded-full bg-white/15 backdrop-blur-sm xs:backdrop-blur px-2 xs:px-2.5 sm:px-3 py-1 xs:py-1 sm:py-1.5 text-[10px] xs:text-[11px] sm:text-xs font-semibold text-white shadow-sm">
+                  <MapPin className="w-2.5 h-2.5 xs:w-3 xs:h-3 sm:w-3.5 sm:h-3.5" />
+                  {event.city}
+                </span>
+              )}
+              {timing?.upcoming && timing.daysUntil > 0 && timing.daysUntil <= 30 && (
+                <span className="inline-flex items-center gap-1 xs:gap-1.5 rounded-full bg-white/15 backdrop-blur-sm xs:backdrop-blur px-2 xs:px-2.5 sm:px-3 py-1 xs:py-1 sm:py-1.5 text-[10px] xs:text-[11px] sm:text-xs font-semibold text-white shadow-sm">
+                  <Clock className="w-2.5 h-2.5 xs:w-3 xs:h-3 sm:w-3.5 sm:h-3.5" />
+                  {timing.daysUntil === 1 ? 'Tomorrow' : `In ${timing.daysUntil}d`}
+                </span>
+              )}
+            </div>
 
-        {/* Tickets */}
-        <Card>
-          <CardHeader>
-            <h2 className="text-lg font-semibold text-gray-900">Ticket Types</h2>
-          </CardHeader>
-          <CardContent>
-            {availability?.ticket_types && availability.ticket_types.length > 0 ? (
-              <div className="space-y-4">
-                {availability.ticket_types.map((ticket: any) => (
-                  <div
-                    key={ticket.id}
-                    className="flex items-center justify-between p-4 border border-gray-200 rounded-lg"
-                  >
-                    <div>
-                      <h3 className="font-semibold text-gray-900">{ticket.name}</h3>
-                      <p className="text-sm text-gray-600">
-                        {ticket.remaining} of {ticket.remaining + (ticket.max_per_order || 10)} available
-                      </p>
+            <h1 className="text-2xl xs:text-2.5xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-extrabold text-white tracking-tight drop-shadow-lg max-w-5xl leading-tight xs:leading-snug sm:leading-normal lg:leading-relaxed">
+              {event.title}
+            </h1>
+
+            {timing?.upcoming && (
+              <p className="mt-2 xs:mt-2.5 sm:mt-3 text-white/90 text-xs xs:text-[13px] sm:text-sm md:text-base leading-relaxed">
+                <span className="font-medium">Starts {formatDistanceToNow(timing.start, { addSuffix: true })}</span> ·{' '}
+                <span className="font-medium">{format(timing.start, 'EEE, MMM d')}</span> ·{' '}
+                <span className="font-medium">{format(timing.start, 'h:mm a')}</span>
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ---- BODY ---- */}
+      <div className="max-w-6xl mx-auto px-3 xs:px-4 sm:px-5 md:px-6 lg:px-8 py-5 xs:py-6 sm:py-7 md:py-8 lg:py-10 xl:py-12">
+        {/* Quick facts strip - Responsive grid */}
+        <div className="grid grid-cols-2 xs:grid-cols-4 gap-2 xs:gap-2.5 sm:gap-3 mb-5 xs:mb-6 sm:mb-7 md:mb-8 lg:mb-10 xl:mb-12">
+          {/* Date Card */}
+          <div className="bg-white rounded-lg xs:rounded-xl shadow-sm hover:shadow-md border border-gray-100 p-2.5 xs:p-3 sm:p-3.5 md:p-4 transition-all duration-200 hover:scale-[1.02] hover:border-brand-200">
+            <div className="flex items-center gap-1.5 xs:gap-2 text-[9px] xs:text-[10px] sm:text-[11px] md:text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5 xs:mb-1">
+              <Calendar className="w-3 h-3 xs:w-3.5 xs:h-3.5 sm:w-4 sm:h-4 text-brand-500" />
+              Date
+            </div>
+            <div className="mt-0.5 xs:mt-1 text-[11px] xs:text-xs sm:text-sm md:text-[15px] font-bold text-gray-900 truncate">
+              {timing ? format(timing.start, 'MMM d, yyyy') : '—'}
+            </div>
+            <div className="text-[9px] xs:text-[10px] sm:text-[11px] text-gray-600 truncate mt-0.5">
+              {timing
+                ? `${format(timing.start, 'h:mm a')}${
+                    timing.end ? ` – ${format(timing.end, 'h:mm a')}` : ''
+                  }`
+                : ''}
+            </div>
+          </div>
+
+          {/* Venue Card */}
+          <div className="bg-white rounded-lg xs:rounded-xl shadow-sm hover:shadow-md border border-gray-100 p-2.5 xs:p-3 sm:p-3.5 md:p-4 transition-all duration-200 hover:scale-[1.02] hover:border-rose-200">
+            <div className="flex items-center gap-1.5 xs:gap-2 text-[9px] xs:text-[10px] sm:text-[11px] md:text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5 xs:mb-1">
+              <MapPin className="w-3 h-3 xs:w-3.5 xs:h-3.5 sm:w-4 sm:h-4 text-rose-500" />
+              Venue
+            </div>
+            <div className="mt-0.5 xs:mt-1 text-[11px] xs:text-xs sm:text-sm md:text-[15px] font-bold text-gray-900 truncate">
+              {event.venue || 'TBA'}
+            </div>
+            {event.city && <div className="text-[9px] xs:text-[10px] sm:text-[11px] text-gray-600 truncate mt-0.5">{event.city}</div>}
+          </div>
+
+          {/* Availability Card */}
+          <div className="bg-white rounded-lg xs:rounded-xl shadow-sm hover:shadow-md border border-gray-100 p-2.5 xs:p-3 sm:p-3.5 md:p-4 transition-all duration-200 hover:scale-[1.02] hover:border-brand-200">
+            <div className="flex items-center gap-1.5 xs:gap-2 text-[9px] xs:text-[10px] sm:text-[11px] md:text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5 xs:mb-1">
+              <Users className="w-3 h-3 xs:w-3.5 xs:h-3.5 sm:w-4 sm:h-4 text-brand-500" />
+              Availability
+            </div>
+            <div className="mt-0.5 xs:mt-1 text-[11px] xs:text-xs sm:text-sm md:text-[15px] font-bold text-gray-900">
+              {ticketTypes.length > 0 ? `${totalRemaining} left` : '—'}
+            </div>
+            <div className="text-[9px] xs:text-[10px] sm:text-[11px] text-gray-600">
+              {ticketTypes.length} {ticketTypes.length === 1 ? 'type' : 'types'}
+            </div>
+          </div>
+
+          {/* Price Card */}
+          <div className="bg-white rounded-lg xs:rounded-xl shadow-sm hover:shadow-md border border-gray-100 p-2.5 xs:p-3 sm:p-3.5 md:p-4 transition-all duration-200 hover:scale-[1.02] hover:border-amber-200">
+            <div className="flex items-center gap-1.5 xs:gap-2 text-[9px] xs:text-[10px] sm:text-[11px] md:text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5 xs:mb-1">
+              <Ticket className="w-3 h-3 xs:w-3.5 xs:h-3.5 sm:w-4 sm:h-4 text-amber-500" />
+              From
+            </div>
+            <div className="mt-0.5 xs:mt-1 text-[11px] xs:text-xs sm:text-sm md:text-[15px] font-bold text-gray-900">
+              {minPrice !== null ? `Br ${minPrice}` : '—'}
+            </div>
+            <div className="text-[9px] xs:text-[10px] sm:text-[11px] text-gray-600">per ticket</div>
+          </div>
+        </div>
+
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 xs:gap-5 sm:gap-6 md:gap-7 lg:gap-8 xl:gap-10">
+          {/* LEFT: Main Content Column */}
+          <div className="lg:col-span-2 space-y-4 xs:space-y-5 sm:space-y-6 lg:space-y-8">
+            {/* About Section */}
+            <Card className="border-0 shadow-sm hover:shadow-md transition-shadow duration-200">
+              <CardHeader className="px-3 xs:px-4 sm:px-5 md:px-6 py-3 xs:py-4 sm:py-5">
+                <div className="flex items-center gap-2 xs:gap-2.5 sm:gap-3">
+                  <Info className="w-5 h-5 xs:w-6 xs:h-6 sm:w-7 sm:h-7 text-brand-500 flex-shrink-0" />
+                  <h2 className="text-lg xs:text-xl sm:text-2xl font-bold text-gray-900">About this event</h2>
+                </div>
+              </CardHeader>
+              <CardContent className="px-3 xs:px-4 sm:px-5 md:px-6 pb-4 xs:pb-5 sm:pb-6">
+                {event.description ? (
+                  <div className="prose prose-sm xs:prose-base sm:prose-lg max-w-none">
+                    <p className="text-gray-700 whitespace-pre-wrap leading-relaxed text-sm xs:text-base sm:text-lg">
+                      {event.description}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="text-center py-6 xs:py-8 sm:py-10">
+                    <Info className="w-10 h-10 xs:w-12 xs:h-12 sm:w-14 sm:h-14 text-gray-300 mx-auto mb-3 xs:mb-4" />
+                    <p className="text-gray-500 italic text-sm xs:text-base">
+                      No description has been added for this event yet.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Tickets */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Ticket className="w-5 h-5 text-brand-500" />
+                    <h2 className="text-xl font-bold text-gray-900">Ticket Types</h2>
+                  </div>
+                  {hasOnSale && (
+                    <span className="text-xs text-gray-500">
+                      {ticketTypes.filter((t) => t.on_sale).length} on sale
+                    </span>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                {ticketTypes.length === 0 ? (
+                  <div className="text-center py-10 text-gray-500">
+                    <Ticket className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                    <p>No ticket types have been set up yet.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5 sm:space-y-3">
+                    {ticketTypes.map((ticket) => {
+                      const isLow =
+                        ticket.on_sale && ticket.remaining > 0 && ticket.remaining <= 10
+                      return (
+                        <div
+                          key={ticket.id}
+                          className={`flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:p-4 rounded-xl border ${
+                            ticket.sold_out || !ticket.on_sale
+                              ? 'border-gray-100 bg-gray-50 opacity-70'
+                              : 'border-gray-200'
+                          } gap-2 sm:gap-0`}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                              <h3 className="font-semibold text-gray-900 text-sm sm:text-base">{ticket.name}</h3>
+                              {isLow && (
+                                <span className="inline-flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">
+                                  <AlertTriangle className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                                  Only {ticket.remaining}
+                                </span>
+                              )}
+                              {ticket.sold_out && (
+                                <span className="text-[10px] sm:text-xs font-semibold text-red-700 bg-red-100 px-1.5 py-0.5 rounded-full">
+                                  Sold out
+                                </span>
+                              )}
+                              {!ticket.sold_out && !ticket.on_sale && (
+                                <span className="text-[10px] sm:text-xs font-semibold text-gray-600 bg-gray-200 px-1.5 py-0.5 rounded-full">
+                                  Not on sale
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5">
+                              {ticket.remaining} of{' '}
+                              {ticket.remaining + (ticket.quantity_sold || 0)} available
+                              {ticket.max_per_order
+                                ? ` · max ${ticket.max_per_order} per order`
+                                : ''}
+                            </p>
+                          </div>
+                          <div className="text-right flex-shrink-0 sm:ml-3 lg:ml-4">
+                            <p className="text-lg sm:text-xl font-bold text-gray-900">
+                              Br {Number(ticket.price_etb).toFixed(0)}
+                            </p>
+                            <p className="text-[10px] sm:text-xs text-gray-500">per ticket</p>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Share link */}
+            {isPublished && (
+              <Card className="border-2 border-brand-200 bg-brand-50/60">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-2">
+                    <Share2 className="w-5 h-5 text-brand-600" />
+                    <h2 className="text-lg font-semibold text-gray-900">Share with customers</h2>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-gray-600 mb-4 text-sm">
+                    Share this link with customers to let them browse and register for your event.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="flex-1 bg-white border border-gray-300 rounded-lg px-4 py-3 flex items-center min-w-0">
+                      <code className="text-sm text-gray-700 truncate w-full">{shareLink}</code>
                     </div>
-                    <div className="text-right">
-                      <p className="text-xl font-bold text-gray-900">
-                        Br {ticket.price_etb}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {ticket.on_sale ? 'On Sale' : 'Not Available'}
-                      </p>
+                    <Button
+                      onClick={handleCopyLink}
+                      size="lg"
+                      className={`${
+                        copySuccess
+                          ? 'bg-brand-600 hover:bg-brand-700'
+                          : 'bg-brand-600 hover:bg-brand-700'
+                      } text-white font-semibold transition-colors`}
+                    >
+                      {copySuccess ? (
+                        <>
+                          <Check className="w-4 h-4 mr-2" />
+                          Copied
+                        </>
+                      ) : (
+                        <>
+                          <Share2 className="w-4 h-4 mr-2" />
+                          Copy Link
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+        
+          </div>
+
+          {/* RIGHT: sticky action card */}
+          <div className="lg:col-span-1">
+            <div className="sticky top-16 sm:top-20 lg:top-24 space-y-2.5 sm:space-y-3">
+              {/* Primary action card */}
+              <Card className="shadow-lg overflow-hidden">
+                <CardHeader className="bg-gradient-to-r from-brand-600 to-brand-600 text-white border-b-0">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-bold">Event actions</h3>
+                    <Ticket className="w-5 h-5 text-white/80" />
+                  </div>
+                  <p className="text-xs text-white/85 mt-1">
+                    Manage your event or open sales to the public.
+                  </p>
+                </CardHeader>
+                <CardContent className="pt-5 space-y-2.5">
+                  {isPublished && hasOnSale && !allSoldOut && (
+                    <Button
+                      size="lg"
+                      fullWidth
+                      onClick={() => navigate(`/events/${event.id}/checkout`)}
+                      className="bg-gradient-to-r from-brand-600 to-brand-600 hover:from-brand-700 hover:to-brand-700 text-white font-semibold shadow-md"
+                    >
+                      <Ticket className="w-4 h-4 mr-2" />
+                      Buy Tickets
+                    </Button>
+                  )}
+
+                  {isPublished && allSoldOut && (
+                    <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700 flex items-start gap-2">
+                      <CalendarOff className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      <span>All tickets for this event are sold out.</span>
+                    </div>
+                  )}
+
+                  {event.status === 'draft' && (
+                    <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800 flex items-start gap-2">
+                      <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      <span>
+                        This event is a draft. Publish it from the edit page to start selling
+                        tickets.
+                      </span>
+                    </div>
+                  )}
+
+                  <Button
+                    variant="secondary"
+                    fullWidth
+                    onClick={() => navigate(`/events/${event.id}/edit`)}
+                  >
+                    <Edit3 className="w-4 h-4 mr-2" />
+                    Edit Event
+                  </Button>
+
+                  <Button
+                    variant="secondary"
+                    fullWidth
+                    onClick={() => navigate(`/events/${event.id}/stats`)}
+                  >
+                    <TrendingUp className="w-4 h-4 mr-2" />
+                    View Stats
+                  </Button>
+
+                  <Button
+                    variant="secondary"
+                    fullWidth
+                    onClick={() => navigate(`/events/${event.id}/scanner`)}
+                  >
+                    <ScanLine className="w-4 h-4 mr-2" />
+                    Open Scanner
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Event meta card */}
+              <Card>
+                <CardContent className="pt-5 space-y-3 text-sm">
+                  <div className="flex items-start gap-2.5">
+                    <Calendar className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <div className="text-gray-500 text-xs">Created</div>
+                      <div className="text-gray-900 font-medium">
+                        {event.created_at
+                          ? format(new Date(event.created_at), 'MMM d, yyyy')
+                          : '—'}
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-600">No ticket types available</p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Action Button */}
-        {event.status === 'published' && availability?.on_sale && (
-          <div className="mt-6">
-            <Button
-              size="lg"
-              onClick={() => navigate(`/events/${event.id}/checkout`)}
-              fullWidth
-            >
-              <Ticket className="w-5 h-5 mr-2" />
-              Buy Tickets
-            </Button>
+                  <div className="flex items-start gap-2.5">
+                    <Ticket className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <div className="text-gray-500 text-xs">Ticket types</div>
+                      <div className="text-gray-900 font-medium">{ticketTypes.length}</div>
+                    </div>
+                  </div>
+                  {minPrice !== null && (
+                    <div className="flex items-start gap-2.5">
+                      <TrendingUp className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <div className="text-gray-500 text-xs">Starts from</div>
+                        <div className="text-gray-900 font-medium">Br {minPrice}</div>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   )

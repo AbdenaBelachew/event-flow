@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>My tickets — TicketGate</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand"><span class="dot"></span> TicketGate</div>
+    <div class="nav">
+      <a href="/">🏠 Home</a>
+      <a href="/buy.html">🎟️ Buy tickets</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <h1>🎫 Your tickets</h1>
+
+    <!-- Search / paste box — always visible so users can re-look-up -->
+    <div class="card" style="margin-bottom:18px">
+      <h2 style="margin-top:0">🔎 Look up tickets</h2>
+      <p class="muted small" style="margin:0 0 10px">Paste your <strong>order ID</strong> (from the confirmation email) or a single <strong>ticket code</strong> to view your tickets.</p>
+      <form onsubmit="lookup(event)" style="display:flex;gap:8px;flex-wrap:wrap">
+        <input id="lookupInput" placeholder="Order ID, full /order.html link, or ticket code" style="flex:1;min-width:200px" />
+        <button class="btn" type="submit" style="white-space:nowrap">Find my tickets</button>
+      </form>
+    </div>
+
+    <div id="status"></div>
+    <div id="content"></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const p = new URLSearchParams(location.search);
+    const idParam = p.get('id');
+    const codeParam = p.get('code');
+
+    function toast(m, ms = 3000) {
+      const t = document.getElementById('toast');
+      t.textContent = m; t.style.display = 'block';
+      clearTimeout(toast._t);
+      toast._t = setTimeout(() => t.style.display = 'none', ms);
+    }
+    const money = n => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2 }) + ' ETB';
+    const fmtDate = s => new Date(s).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    function esc(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function lookup(e) {
+      e.preventDefault();
+      const raw = document.getElementById('lookupInput').value.trim();
+      if (!raw) { toast('Paste an order ID or ticket code'); return; }
+
+      // Accept a full link like /tickets.html?id=... or /order.html?id=...
+      const linkMatch = raw.match(/[?&](?:id|code)=([0-9a-f-]{8,})/i);
+      if (linkMatch) {
+        const key = raw.includes('code=') ? 'code' : 'id';
+        location.search = '?' + key + '=' + encodeURIComponent(linkMatch[1]);
+        return;
+      }
+
+      // UUID-ish? treat as order id
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)) {
+        location.search = '?id=' + encodeURIComponent(raw);
+        return;
+      }
+
+      // Otherwise treat as a ticket code
+      location.search = '?code=' + encodeURIComponent(raw);
+    }
+
+    function pendingNotice() {
+      return `<div class="card" style="text-align:center;padding:36px 20px;background:rgba(245,158,11,0.08);border-color:rgba(245,158,11,0.3)">
+        <div style="font-size:36px;margin-bottom:6px">⏳</div>
+        <h2 style="margin:0 0 6px">Payment pending</h2>
+        <p class="muted" style="margin:0">Your tickets will appear here once payment is confirmed. This usually takes a few seconds.</p>
+        <button class="btn secondary" style="margin-top:16px" onclick="location.reload()">↻ Refresh</button>
+      </div>`;
+    }
+
+    function errorCard(msg) {
+      return `<div class="empty">
+        <div class="icon">🔍</div>
+        <h2>Couldn't find that</h2>
+        <p>${esc(msg)}</p>
+      </div>`;
+    }
+
+    // ---------- ORDER MODE ----------
+    async function loadOrder(id) {
+      const status = document.getElementById('status');
+      const content = document.getElementById('content');
+      status.innerHTML = `<div class="loading-block"><div class="spinner"></div><div>Loading your order…</div></div>`;
+      content.innerHTML = '';
+
+      try {
+        const res = await fetch('/api/orders/' + encodeURIComponent(id));
+        if (res.status === 404) { status.innerHTML = ''; content.innerHTML = errorCard('No order with that ID. Double-check the link from your confirmation email.'); return; }
+        if (!res.ok) throw new Error('Failed to load order');
+        const data = await res.json();
+        const o = data.order;
+        const tickets = data.tickets || [];
+        const paid = o.status === 'paid';
+
+        const statusColor = paid ? 'on' : 'off';
+        const icon = paid ? '✅' : '⏳';
+
+        status.innerHTML = `<div class="card" style="margin-bottom:18px">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+            <div>
+              <div class="muted small">Order #${esc(o.id.substring(0, 8))}</div>
+              <div class="total" style="margin-top:6px">${money(o.total_amount_etb)}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span class="badge ${statusColor}">${icon} ${esc(o.status.toUpperCase())}</span>
+              <button class="btn secondary small" onclick="copyLink('${esc(o.id)}')">📋 Copy link</button>
+            </div>
+          </div>
+        </div>`;
+
+        if (!paid) { content.innerHTML = pendingNotice(); return; }
+        if (tickets.length === 0) { content.innerHTML = errorCard('No tickets found in this order.'); return; }
+
+        // Render tickets one by one, fetching each QR
+        const list = document.createElement('div');
+        list.innerHTML = '<h2 style="margin:14px 0 6px">🎟️ Your tickets</h2>';
+        content.appendChild(list);
+
+        for (const t of tickets) {
+          try {
+            const r = await fetch('/api/tickets/' + encodeURIComponent(t.ticket_code));
+            const q = await r.json();
+            const ev = q.ticket;
+            const card = document.createElement('div');
+            card.className = 'ticket-detail';
+            card.innerHTML = `
+              <img src="${q.qr_data_url}" alt="QR Code" title="Scan this at the gate" />
+              <div class="info">
+                <div class="evtitle">${esc(ev.event_title || '')}</div>
+                <div class="when">${esc([ev.venue, ev.city].filter(Boolean).join(' • ') || 'TBA')} • ${fmtDate(ev.event_start)}</div>
+                <div style="margin:6px 0 10px">
+                  <span class="tag">${esc(ev.ticket_type || '')}</span>
+                  <span class="badge ${ev.status === 'used' ? 'off' : 'on'}" style="margin-left:6px">${esc((ev.status || '').toUpperCase())}</span>
+                </div>
+                <div style="font-size:13px;color:var(--muted);margin-bottom:6px">Holder: <strong style="color:var(--text)">${esc(ev.holder_name || 'Not assigned')}</strong></div>
+                <div class="code">${esc(ev.ticket_code)}</div>
+              </div>
+            `;
+            list.appendChild(card);
+          } catch (e) {
+            console.error('ticket load failed', t.ticket_code, e);
+          }
+        }
+      } catch (e) {
+        console.error(e);
+        status.innerHTML = '';
+        content.innerHTML = errorCard(e.message || 'Network error. Try again.');
+      }
+    }
+
+    // ---------- SINGLE TICKET MODE ----------
+    async function loadTicket(code) {
+      const status = document.getElementById('status');
+      const content = document.getElementById('content');
+      status.innerHTML = `<div class="loading-block"><div class="spinner"></div><div>Loading ticket…</div></div>`;
+      content.innerHTML = '';
+
+      try {
+        const r = await fetch('/api/tickets/' + encodeURIComponent(code));
+        if (r.status === 404) { status.innerHTML = ''; content.innerHTML = errorCard('No ticket with that code.'); return; }
+        if (!r.ok) throw new Error('Failed to load ticket');
+        const q = await r.json();
+        const ev = q.ticket;
+        status.innerHTML = '';
+        const card = document.createElement('div');
+        card.className = 'ticket-detail';
+        card.innerHTML = `
+          <img src="${q.qr_data_url}" alt="QR Code" title="Scan this at the gate" />
+          <div class="info">
+            <div class="evtitle">${esc(ev.event_title || '')}</div>
+            <div class="when">${esc([ev.venue, ev.city].filter(Boolean).join(' • ') || 'TBA')} • ${fmtDate(ev.event_start)}</div>
+            <div style="margin:6px 0 10px">
+              <span class="tag">${esc(ev.ticket_type || '')}</span>
+              <span class="badge ${ev.status === 'used' ? 'off' : 'on'}" style="margin-left:6px">${esc((ev.status || '').toUpperCase())}</span>
+            </div>
+            <div style="font-size:13px;color:var(--muted);margin-bottom:6px">Holder: <strong style="color:var(--text)">${esc(ev.holder_name || 'Not assigned')}</strong></div>
+            <div class="code">${esc(ev.ticket_code)}</div>
+            <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn secondary" onclick="copyText('${esc(ev.ticket_code)}')">📋 Copy code</button>
+            </div>
+          </div>
+        `;
+        content.appendChild(card);
+      } catch (e) {
+        console.error(e);
+        status.innerHTML = '';
+        content.innerHTML = errorCard(e.message || 'Network error. Try again.');
+      }
+    }
+
+    async function copyLink(id) {
+      const url = location.origin + '/tickets.html?id=' + encodeURIComponent(id);
+      try { await navigator.clipboard.writeText(url); toast('Link copied to clipboard'); }
+      catch { toast('Copy failed — long-press the URL bar'); }
+    }
+    async function copyText(s) {
+      try { await navigator.clipboard.writeText(s); toast('Copied'); }
+      catch { toast('Copy failed'); }
+    }
+
+    // ---------- boot ----------
+    if (idParam) loadOrder(idParam);
+    else if (codeParam) loadTicket(codeParam);
+    // else: show the search box (always visible anyway) with no result
+  </script>
+</body>
+</html>
