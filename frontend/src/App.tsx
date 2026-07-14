@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
-import { QueryClientProvider, QueryClient } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from './lib/auth-context'
+import { queryClient } from './lib/queryClient'
 import ProtectedRoute from './components/ProtectedRoute'
 import ErrorBoundary from './components/ErrorBoundary'
 import AppLayout from './components/AppLayout'
@@ -17,18 +18,11 @@ import CheckoutPage from './routes/events.checkout'
 import ScannerPage from './routes/events.scanner'
 import StatsPage from './routes/events.stats'
 import OrderPage from './routes/orders.detail'
+import EventPaymentsPage from './routes/events.payments'
+import FindTicketsPage from './routes/tickets'
 import BrowsePage from './routes/browse'
 import PaymentCallbackPage from './routes/payment-callback'
 import NotFoundPage from './routes/not-found'
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 1000 * 60 * 5, // 5 minutes
-      gcTime: 1000 * 60 * 10, // 10 minutes
-    },
-  },
-})
 
 export default function App() {
   return (
@@ -43,6 +37,7 @@ export default function App() {
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
                 <Route path="/browse" element={<BrowsePage />} />
+                <Route path="/tickets" element={<FindTicketsPage />} />
                 <Route path="/payment-callback" element={<PaymentCallbackPage />} />
 
                 {/* Protected Routes */}
@@ -53,6 +48,7 @@ export default function App() {
                   <Route path="/events/:id/edit" element={<EditEventPage />} />
                   <Route path="/events/:id/scanner" element={<ScannerPage />} />
                   <Route path="/events/:id/stats" element={<StatsPage />} />
+                  <Route path="/events/:id/payments" element={<EventPaymentsPage />} />
                 </Route>
 
                 {/* Public Checkout (not protected - guests can checkout) */}

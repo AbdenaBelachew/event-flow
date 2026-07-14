@@ -128,6 +128,88 @@ router.post(
   })
 );
 
+/**
+ * POST /api/orders/lookup  (public — recover lost tickets)
+ * Body one of:
+ *   { order_id }
+ *   { ticket_code }
+ *   { email, phone }
+ */
+router.post(
+  "/lookup",
+  asyncHandler(async (req, res) => {
+    const orderId = String((req.body && req.body.order_id) || "").trim();
+    const ticketCode = String((req.body && req.body.ticket_code) || "").trim();
+    const email = String((req.body && req.body.email) || "")
+      .trim()
+      .toLowerCase();
+    const phone = String((req.body && req.body.phone) || "")
+      .trim()
+      .replace(/\s+/g, "");
+
+    let orderIds = [];
+
+    if (orderId) {
+      // Accept full UUID or short 8-char prefix from the ticket slip
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId)) {
+        orderIds = [orderId];
+      } else if (/^[0-9a-f]{8}$/i.test(orderId)) {
+        const { rows } = await query(
+          `SELECT id FROM orders WHERE id::text ILIKE $1 ORDER BY created_at DESC LIMIT 5`,
+          [`${orderId}%`]
+        );
+        orderIds = rows.map((r) => r.id);
+      } else {
+        throw new ApiError(400, "Invalid order ID");
+      }
+    } else if (ticketCode) {
+      const { rows } = await query(
+        `SELECT order_id FROM tickets WHERE ticket_code = $1`,
+        [ticketCode]
+      );
+      if (!rows.length) throw new ApiError(404, "No ticket found for that code");
+      orderIds = [rows[0].order_id];
+    } else if (email && phone) {
+      const { rows } = await query(
+        `SELECT id FROM orders
+         WHERE buyer_email = $1
+           AND REPLACE(buyer_phone, ' ', '') = $2
+         ORDER BY created_at DESC
+         LIMIT 10`,
+        [email, phone]
+      );
+      if (!rows.length) {
+        throw new ApiError(404, "No orders found for that email and phone");
+      }
+      orderIds = rows.map((r) => r.id);
+    } else {
+      throw new ApiError(
+        400,
+        "Provide order_id, ticket_code, or both email and phone"
+      );
+    }
+
+    const orders = [];
+    for (const id of orderIds) {
+      const full = await getOrderWithTickets(id);
+      if (!full) continue;
+      const eventRes = await query(
+        `SELECT id, title, venue, city, event_start, event_end, cover_image_url
+         FROM events WHERE id = $1`,
+        [full.order.event_id]
+      );
+      orders.push({
+        ...full,
+        event: eventRes.rows[0] || null,
+      });
+    }
+
+    if (!orders.length) throw new ApiError(404, "No orders found");
+
+    res.json({ orders });
+  })
+);
+
 // GET /api/orders/:id   (buyer looks up their order + tickets)
 router.get(
   "/:id",
@@ -138,16 +220,59 @@ router.get(
   })
 );
 
+function paymentInstructions(gatewayName, amount) {
+  const amt = Number(amount).toFixed(2);
+  if (gatewayName === "telebirr") {
+    return {
+      title: "Pay with Telebirr",
+      steps: [
+        `Open Telebirr on your phone`,
+        `Send Br ${amt} to ${env.TELEBIRR_MERCHANT_PHONE}`,
+        `Copy the transaction / confirmation code from Telebirr`,
+        `Paste the codes below so we can verify your payment`,
+      ],
+      pay_to: env.TELEBIRR_MERCHANT_PHONE,
+      amount_etb: amt,
+    };
+  }
+  if (gatewayName === "cbe_birr") {
+    return {
+      title: "Pay with CBE Birr",
+      steps: [
+        `Open CBE Birr on your phone`,
+        `Transfer Br ${amt} to account ${env.CBE_ACCOUNT_NUMBER} (${env.CBE_ACCOUNT_NAME})`,
+        `Copy the reference / transaction number`,
+        `Paste the codes below so we can verify your payment`,
+      ],
+      pay_to: env.CBE_ACCOUNT_NUMBER,
+      pay_to_name: env.CBE_ACCOUNT_NAME,
+      amount_etb: amt,
+    };
+  }
+  // chapa (and default)
+  return {
+    title: "Pay with Chapa",
+    steps: [
+      `Pay Br ${amt} via Chapa`,
+      env.CHAPA_MERCHANT_HINT,
+      `After payment, copy your transaction code and reference`,
+      `Paste the codes below so we can verify your payment`,
+    ],
+    amount_etb: amt,
+  };
+}
+
 /**
  * POST /api/orders/:id/pay
  * Body: { gateway: 'chapa' | 'telebirr' | 'cbe_birr' }
- * Creates a payment record and returns the gateway checkout_url.
+ * Starts a manual payment: creates payment row + returns pay-on-phone instructions.
+ * Buyer then submits tx/reference codes; admin approves before tickets unlock.
  */
 router.post(
   "/:id/pay",
   asyncHandler(async (req, res) => {
     const gatewayName = (req.body && req.body.gateway) || "chapa";
-    const gateway = getGateway(gatewayName);
+    getGateway(gatewayName); // validate known gateway
 
     const orderRes = await query(`SELECT * FROM orders WHERE id = $1`, [req.params.id]);
     if (!orderRes.rows.length) throw new ApiError(404, "Order not found");
@@ -155,30 +280,117 @@ router.post(
     if (order.status === "paid") throw new ApiError(409, "Order already paid");
     if (order.status !== "pending") throw new ApiError(409, `Order is ${order.status}`);
 
-    // Create payment record (initiated)
-    const payRes = await query(
-      `INSERT INTO payments (order_id, gateway, amount_etb, status)
-       VALUES ($1,$2,$3,'initiated') RETURNING *`,
-      [order.id, gatewayName, order.total_amount_etb]
+    // Reuse an open payment on this order if still in progress
+    const existing = await query(
+      `SELECT * FROM payments
+       WHERE order_id = $1 AND status IN ('initiated', 'awaiting_approval')
+       ORDER BY created_at DESC LIMIT 1`,
+      [order.id]
     );
-    const payment = payRes.rows[0];
 
-    const callbackUrl = `${env.APP_BASE_URL}/api/payments/webhook/${gatewayName}`;
-    const returnUrl = `${env.APP_BASE_URL}/order.html?id=${order.id}`;
-
-    const init = await gateway.initiate({ order, payment, callbackUrl, returnUrl });
-
-    await query(
-      `UPDATE payments SET gateway_ref = $1, raw_response = $2, updated_at = now() WHERE id = $3`,
-      [init.gateway_ref, init.raw || null, payment.id]
-    );
+    let payment;
+    if (existing.rows.length) {
+      payment = existing.rows[0];
+      if (payment.gateway !== gatewayName && payment.status === "initiated") {
+        const updated = await query(
+          `UPDATE payments SET gateway = $1, updated_at = now() WHERE id = $2 RETURNING *`,
+          [gatewayName, payment.id]
+        );
+        payment = updated.rows[0];
+      }
+    } else {
+      const payRes = await query(
+        `INSERT INTO payments (order_id, gateway, amount_etb, status)
+         VALUES ($1,$2,$3,'initiated') RETURNING *`,
+        [order.id, gatewayName, order.total_amount_etb]
+      );
+      payment = payRes.rows[0];
+    }
 
     res.json({
       payment_id: payment.id,
-      gateway: gatewayName,
-      gateway_ref: init.gateway_ref,
-      checkout_url: init.checkout_url,
-      simulated: typeof gateway.isLive === "function" ? !gateway.isLive() : false,
+      gateway: payment.gateway,
+      status: payment.status,
+      amount_etb: order.total_amount_etb,
+      instructions: paymentInstructions(payment.gateway, order.total_amount_etb),
+      mode: "manual_approval",
+    });
+  })
+);
+
+/**
+ * POST /api/orders/:id/payment-proof
+ * Body: { tx_code, reference_code, gateway? }
+ * Buyer submits phone payment codes for admin review.
+ */
+router.post(
+  "/:id/payment-proof",
+  asyncHandler(async (req, res) => {
+    const txCode = String((req.body && req.body.tx_code) || "").trim();
+    const referenceCode = String((req.body && req.body.reference_code) || "").trim();
+    const gatewayName = (req.body && req.body.gateway) || null;
+
+    if (!txCode || !referenceCode) {
+      throw new ApiError(400, "tx_code and reference_code are required");
+    }
+
+    const orderRes = await query(`SELECT * FROM orders WHERE id = $1`, [req.params.id]);
+    if (!orderRes.rows.length) throw new ApiError(404, "Order not found");
+    const order = orderRes.rows[0];
+    if (order.status === "paid") throw new ApiError(409, "Order already paid");
+    if (order.status !== "pending") throw new ApiError(409, `Order is ${order.status}`);
+
+    let payment;
+    const open = await query(
+      `SELECT * FROM payments
+       WHERE order_id = $1 AND status IN ('initiated', 'awaiting_approval')
+       ORDER BY created_at DESC LIMIT 1`,
+      [order.id]
+    );
+
+    if (open.rows.length) {
+      payment = open.rows[0];
+    } else {
+      if (!gatewayName) throw new ApiError(400, "Select a payment gateway first");
+      getGateway(gatewayName);
+      const payRes = await query(
+        `INSERT INTO payments (order_id, gateway, amount_etb, status)
+         VALUES ($1,$2,$3,'initiated') RETURNING *`,
+        [order.id, gatewayName, order.total_amount_etb]
+      );
+      payment = payRes.rows[0];
+    }
+
+    if (payment.status === "success") {
+      throw new ApiError(409, "Payment already approved");
+    }
+
+    try {
+      const updated = await query(
+        `UPDATE payments
+         SET gateway_ref = $1,
+             buyer_tx_code = $2,
+             buyer_reference = $3,
+             status = 'awaiting_approval',
+             updated_at = now()
+         WHERE id = $4
+         RETURNING id, gateway, gateway_ref, amount_etb, status, buyer_tx_code, buyer_reference, created_at`,
+        [referenceCode, txCode, referenceCode, payment.id]
+      );
+      payment = updated.rows[0];
+    } catch (err) {
+      if (err.code === "23505") {
+        throw new ApiError(409, "That reference code was already submitted for another payment");
+      }
+      throw err;
+    }
+
+    const full = await getOrderWithTickets(order.id);
+    res.json({
+      message: "Payment codes submitted. Waiting for admin approval.",
+      payment,
+      order: full.order,
+      tickets: full.tickets,
     });
   })
 );

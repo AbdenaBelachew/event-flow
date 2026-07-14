@@ -54,6 +54,7 @@ async function releaseOrder(client, orderId, newStatus = "failed") {
 async function getOrderWithTickets(orderId) {
   const order = await query(`SELECT * FROM orders WHERE id = $1`, [orderId]);
   if (!order.rows.length) return null;
+  const paid = order.rows[0].status === "paid";
   const tickets = await query(
     `SELECT t.id, t.ticket_code, t.holder_name, t.status, t.issued_at, t.used_at,
             tt.name AS ticket_type, tt.price_etb
@@ -61,12 +62,18 @@ async function getOrderWithTickets(orderId) {
      WHERE t.order_id = $1 ORDER BY t.issued_at ASC`,
     [orderId]
   );
+  // Hide ticket codes until payment is approved — buyers only get them when paid.
+  const safeTickets = tickets.rows.map((t) => ({
+    ...t,
+    ticket_code: paid ? t.ticket_code : null,
+  }));
   const payment = await query(
-    `SELECT id, gateway, gateway_ref, amount_etb, status, created_at
+    `SELECT id, gateway, gateway_ref, amount_etb, status, created_at,
+            buyer_tx_code, buyer_reference, reviewed_at, review_note
      FROM payments WHERE order_id = $1 ORDER BY created_at DESC LIMIT 1`,
     [orderId]
   );
-  return { order: order.rows[0], tickets: tickets.rows, payment: payment.rows[0] || null };
+  return { order: order.rows[0], tickets: safeTickets, payment: payment.rows[0] || null };
 }
 
 module.exports = { issueTicketsForOrder, releaseOrder, getOrderWithTickets };

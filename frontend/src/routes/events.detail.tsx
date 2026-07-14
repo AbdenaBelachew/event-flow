@@ -24,6 +24,7 @@ import {
 import { format, formatDistanceToNow, isFuture, isPast, differenceInDays } from 'date-fns'
 import { useMemo, useState, useEffect } from 'react'
 import { buildEventShareLink } from '../lib/slug'
+import { useRequireEventOwner } from '../lib/event-access'
 
 export default function EventDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -34,6 +35,9 @@ export default function EventDetailPage() {
     queryKey: ['events', id],
     queryFn: () => eventsAPI.getEvent(id!).then((res) => res.data.event),
   })
+
+  const isOwner = useRequireEventOwner(event, isLoading)
+  if (event && !isOwner) return null
 
   const { data: availability } = useQuery({
     queryKey: ['events', id, 'availability'],
@@ -624,6 +628,14 @@ export default function EventDetailPage() {
                   >
                     <ScanLine className="w-4 h-4 mr-2" />
                     Open Scanner
+                  </Button>
+
+                  <Button
+                    variant="secondary"
+                    fullWidth
+                    onClick={() => navigate(`/events/${event.id}/payments`)}
+                  >
+                    Approve payments
                   </Button>
                 </CardContent>
               </Card>

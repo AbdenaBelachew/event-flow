@@ -15,23 +15,40 @@ function signToken(user) {
   );
 }
 
-/** Requires a valid Bearer token; attaches req.user. */
-function authRequired(req, _res, next) {
+function attachUserFromToken(req) {
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
-  if (!token) return next(new ApiError(401, "Authentication required"));
+  if (!token) return null;
+  const payload = jwt.verify(token, env.JWT_SECRET);
+  return {
+    id: payload.sub,
+    role: payload.role,
+    company_id: payload.company_id,
+    assigned_event_id: payload.assigned_event_id,
+  };
+}
+
+/** Requires a valid Bearer token; attaches req.user. */
+function authRequired(req, _res, next) {
   try {
-    const payload = jwt.verify(token, env.JWT_SECRET);
-    req.user = {
-      id: payload.sub,
-      role: payload.role,
-      company_id: payload.company_id,
-      assigned_event_id: payload.assigned_event_id,
-    };
+    const user = attachUserFromToken(req);
+    if (!user) return next(new ApiError(401, "Authentication required"));
+    req.user = user;
     return next();
   } catch (_err) {
     return next(new ApiError(401, "Invalid or expired token"));
   }
 }
 
-module.exports = { signToken, authRequired };
+/** Parses Bearer token when present; continues anonymously otherwise. */
+function authOptional(req, _res, next) {
+  try {
+    const user = attachUserFromToken(req);
+    if (user) req.user = user;
+  } catch (_err) {
+    // Ignore invalid tokens for optional auth
+  }
+  return next();
+}
+
+module.exports = { signToken, authRequired, authOptional };

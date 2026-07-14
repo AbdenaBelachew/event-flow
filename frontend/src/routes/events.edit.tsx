@@ -8,8 +8,7 @@ import Alert from '../components/Alert'
 import Card, { CardContent, CardHeader } from '../components/Card'
 import Modal from '../components/Modal'
 import { Calendar, MapPin, FileImage, ChevronLeft, Edit3, AlertCircle, ArrowLeft } from 'lucide-react'
-
-
+import { useRequireEventOwner } from '../lib/event-access'
 
 export default function EditEventPage() {
   const { id } = useParams<{ id: string }>()
@@ -48,6 +47,9 @@ export default function EditEventPage() {
     queryKey: ['events', id],
     queryFn: () => eventsAPI.getEvent(id!).then((res) => res.data.event),
   })
+
+  const isOwner = useRequireEventOwner(event, eventLoading)
+  if (event && !isOwner) return null
 
   const { data: ticketTypes = [], refetch: refetchTickets } = useQuery({
     queryKey: ['events', id, 'ticket-types'],

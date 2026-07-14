@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { clearAppCache } from './queryClient'
 
 export interface User {
   id: string
@@ -31,6 +32,12 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+function clearSessionStorage() {
+  localStorage.removeItem('token')
+  localStorage.removeItem('user')
+  localStorage.removeItem('company')
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [company, setCompany] = useState<Company | null>(null)
@@ -52,32 +59,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (err) {
         console.error('Failed to restore session:', err)
-        localStorage.removeItem('token')
-        localStorage.removeItem('user')
-        localStorage.removeItem('company')
+        clearSessionStorage()
       }
     }
     setIsLoading(false)
   }, [])
 
   const login = (newToken: string, newUser: User, newCompany?: Company) => {
+    // Wipe previous account's cached queries before switching session
+    clearAppCache()
+
     setToken(newToken)
     setUser(newUser)
-    if (newCompany) {
-      setCompany(newCompany)
-      localStorage.setItem('company', JSON.stringify(newCompany))
-    }
+    setCompany(newCompany ?? null)
+
     localStorage.setItem('token', newToken)
     localStorage.setItem('user', JSON.stringify(newUser))
+    if (newCompany) {
+      localStorage.setItem('company', JSON.stringify(newCompany))
+    } else {
+      localStorage.removeItem('company')
+    }
   }
 
   const logout = () => {
+    clearAppCache()
     setToken(null)
     setUser(null)
     setCompany(null)
-    localStorage.removeItem('token')
-    localStorage.removeItem('user')
-    localStorage.removeItem('company')
+    clearSessionStorage()
   }
 
   const value: AuthContextType = {

@@ -26,8 +26,12 @@ const env = {
 
   TELEBIRR_APP_ID: process.env.TELEBIRR_APP_ID || "",
   TELEBIRR_APP_KEY: process.env.TELEBIRR_APP_KEY || "",
+  TELEBIRR_MERCHANT_PHONE: process.env.TELEBIRR_MERCHANT_PHONE || "0911000000",
   CBE_BIRR_MERCHANT_ID: process.env.CBE_BIRR_MERCHANT_ID || "",
   CBE_BIRR_API_KEY: process.env.CBE_BIRR_API_KEY || "",
+  CBE_ACCOUNT_NUMBER: process.env.CBE_ACCOUNT_NUMBER || "1000123456789",
+  CBE_ACCOUNT_NAME: process.env.CBE_ACCOUNT_NAME || "EventFlow Tickets",
+  CHAPA_MERCHANT_HINT: process.env.CHAPA_MERCHANT_HINT || "Pay via Chapa to EventFlow",
 
   CHECKIN_RATE_WINDOW_MS: parseInt(process.env.CHECKIN_RATE_WINDOW_MS || "10000", 10),
   CHECKIN_RATE_MAX: parseInt(process.env.CHECKIN_RATE_MAX || "30", 10),

@@ -84,7 +84,12 @@ CREATE TABLE IF NOT EXISTS payments (
   gateway_ref VARCHAR(150),
   amount_etb NUMERIC(12,2) NOT NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'initiated'
-    CHECK (status IN ('initiated','success','failed')),
+    CHECK (status IN ('initiated','awaiting_approval','success','failed')),
+  buyer_tx_code VARCHAR(150),
+  buyer_reference VARCHAR(150),
+  reviewed_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  reviewed_at TIMESTAMPTZ,
+  review_note TEXT,
   raw_response JSONB,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()

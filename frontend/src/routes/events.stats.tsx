@@ -5,10 +5,18 @@ import Card, { CardContent, CardHeader } from '../components/Card'
 import Button from '../components/Button'
 import Alert from '../components/Alert'
 import { Users, Banknote, TrendingUp, BarChart3, ArrowLeft, Sparkles, Ticket, CheckCircle2 } from 'lucide-react'
+import { useRequireEventOwner } from '../lib/event-access'
 
 export default function StatsPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+
+  const { data: event, isLoading: eventLoading } = useQuery({
+    queryKey: ['events', id],
+    queryFn: () => eventsAPI.getEvent(id!).then((res) => res.data.event),
+    enabled: !!id,
+  })
+  const isOwner = useRequireEventOwner(event, eventLoading)
 
   const { data: stats, isLoading, isError } = useQuery({
     queryKey: ['events', id, 'stats'],
@@ -16,9 +24,12 @@ export default function StatsPage() {
       const res = await eventsAPI.getStats(id!)
       return res.data
     },
+    enabled: !!id && !!event && isOwner,
   })
 
-  if (isLoading) {
+  if (event && !isOwner) return null
+
+  if (eventLoading || isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-brand-50 via-brand-50 to-brand-50">
         <div className="text-center">

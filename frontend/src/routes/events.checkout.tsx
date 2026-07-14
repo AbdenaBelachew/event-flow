@@ -7,6 +7,7 @@ import Button from '../components/Button'
 import Alert from '../components/Alert'
 import Card, { CardContent, CardHeader } from '../components/Card'
 import { ShoppingCart, Minus, Plus } from 'lucide-react'
+import { slugify } from '../lib/slug'
 
 interface CartItem {
   ticket_type_id: string
@@ -16,24 +17,56 @@ interface CartItem {
   holder_name: string
 }
 
+interface CheckoutDraft {
+  eventId?: string
+  eventSlug?: string | null
+  buyer?: { name?: string; email?: string; phone?: string }
+  cart?: CartItem[]
+}
+
 export default function CheckoutPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [error, setError] = useState('')
   const [cart, setCart] = useState<CartItem[]>([])
   const [step, setStep] = useState<'select' | 'checkout'>('select')
+  const [eventSlug, setEventSlug] = useState<string | null>(null)
   const [buyerInfo, setBuyerInfo] = useState({
     buyer_name: '',
     buyer_email: '',
     buyer_phone: '',
   })
+  const [draftReady, setDraftReady] = useState(false)
 
   useEffect(() => {
-    // Pre-fill from registration form if available
-    const registrantInfo = sessionStorage.getItem('registrantInfo')
-    if (registrantInfo) {
+    // Prefer the new draft (ticket + buyer). Fall back to legacy registrantInfo.
+    const draftRaw = sessionStorage.getItem('checkoutDraft')
+    const legacyRaw = sessionStorage.getItem('registrantInfo')
+
+    if (draftRaw) {
       try {
-        const data = JSON.parse(registrantInfo)
+        const draft: CheckoutDraft = JSON.parse(draftRaw)
+        if (!draft.eventId || draft.eventId === id) {
+          if (draft.buyer) {
+            setBuyerInfo({
+              buyer_name: draft.buyer.name || '',
+              buyer_email: draft.buyer.email || '',
+              buyer_phone: draft.buyer.phone || '',
+            })
+          }
+          if (draft.cart?.length) {
+            setCart(draft.cart)
+            setStep('checkout')
+          }
+          if (draft.eventSlug) setEventSlug(draft.eventSlug)
+        }
+        sessionStorage.removeItem('checkoutDraft')
+      } catch (err) {
+        console.error('Failed to parse checkout draft', err)
+      }
+    } else if (legacyRaw) {
+      try {
+        const data = JSON.parse(legacyRaw)
         setBuyerInfo({
           buyer_name: data.name || '',
           buyer_email: data.email || '',
@@ -44,7 +77,8 @@ export default function CheckoutPage() {
         console.error('Failed to parse registrant info', err)
       }
     }
-  }, [])
+    setDraftReady(true)
+  }, [id])
 
   const { data: availability, isLoading } = useQuery({
     queryKey: ['events', id, 'availability'],
@@ -60,6 +94,15 @@ export default function CheckoutPage() {
       setError(err.response?.data?.message || 'Failed to create order')
     },
   })
+
+  const backToEvent = () => {
+    const slug = eventSlug || (availability?.event?.title ? slugify(availability.event.title) : null)
+    if (slug) {
+      navigate(`/browse?event=${slug}`)
+      return
+    }
+    navigate('/browse')
+  }
 
   const handleAddToCart = (ticket: any) => {
     const existing = cart.find((item) => item.ticket_type_id === ticket.id)
@@ -101,14 +144,17 @@ export default function CheckoutPage() {
     )
   }
 
-
-
   const handleCheckout = (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
 
     if (!buyerInfo.buyer_name || !buyerInfo.buyer_email || !buyerInfo.buyer_phone) {
       setError('Please fill in all buyer information')
+      return
+    }
+
+    if (cart.length === 0) {
+      setError('Your cart is empty')
       return
     }
 
@@ -128,8 +174,9 @@ export default function CheckoutPage() {
   }
 
   const cartTotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
+  const cameFromBrowse = step === 'checkout' && cart.length > 0
 
-  if (isLoading) {
+  if (isLoading || !draftReady) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-600"></div>
@@ -146,10 +193,10 @@ export default function CheckoutPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50/60">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Button variant="ghost" onClick={() => navigate(`/events/${id}`)} className="mb-6">
-          ← Back to Event
+        <Button variant="ghost" onClick={backToEvent} className="mb-6">
+          ← Back to event
         </Button>
 
         {error && (
@@ -167,20 +214,20 @@ export default function CheckoutPage() {
             {step === 'select' ? (
               <Card>
                 <CardHeader>
-                  <h2 className="text-2xl font-bold text-gray-900">
+                  <h2 className="text-2xl font-bold text-slate-900">
                     {availability.event.title}
                   </h2>
-                  <p className="text-gray-600 mt-1">Select tickets to purchase</p>
+                  <p className="text-slate-600 mt-1">Select tickets to purchase</p>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {availability.ticket_types.map((ticket: any) => (
                     <div
                       key={ticket.id}
-                      className="flex items-center justify-between p-4 border border-gray-200 rounded-lg"
+                      className="flex items-center justify-between p-4 border border-slate-200 rounded-lg"
                     >
                       <div>
-                        <h3 className="font-semibold text-gray-900">{ticket.name}</h3>
-                        <p className="text-sm text-gray-600">
+                        <h3 className="font-semibold text-slate-900">{ticket.name}</h3>
+                        <p className="text-sm text-slate-600">
                           Br {ticket.price_etb} • {ticket.remaining} available
                         </p>
                       </div>
@@ -198,22 +245,25 @@ export default function CheckoutPage() {
             ) : (
               <Card>
                 <CardHeader>
-                  <h2 className="text-2xl font-bold text-gray-900">Checkout</h2>
+                  <h2 className="text-2xl font-bold text-slate-900">Confirm & pay</h2>
+                  <p className="text-slate-600 mt-1">
+                    Review your order, then create it to pay.
+                  </p>
                 </CardHeader>
                 <CardContent>
                   <form onSubmit={handleCheckout} className="space-y-6">
-                    {/* Cart Items */}
                     <div className="space-y-4">
-                      <h3 className="text-lg font-semibold text-gray-900">Order Items</h3>
+                      <h3 className="text-lg font-semibold text-slate-900">Your tickets</h3>
                       {cart.map((item) => (
                         <div
                           key={item.ticket_type_id}
-                          className="p-4 border border-gray-200 rounded-lg space-y-3"
+                          className="p-4 border border-slate-200 rounded-lg space-y-3"
                         >
                           <div className="flex justify-between items-center">
-                            <h4 className="font-medium text-gray-900">{item.ticket_name}</h4>
+                            <h4 className="font-medium text-slate-900">{item.ticket_name}</h4>
                             <div className="flex items-center gap-2">
                               <Button
+                                type="button"
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleUpdateQuantity(item.ticket_type_id, -1)}
@@ -222,6 +272,7 @@ export default function CheckoutPage() {
                               </Button>
                               <span className="w-8 text-center">{item.quantity}</span>
                               <Button
+                                type="button"
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleUpdateQuantity(item.ticket_type_id, 1)}
@@ -237,9 +288,8 @@ export default function CheckoutPage() {
                       ))}
                     </div>
 
-                    {/* Buyer Info */}
                     <div className="space-y-4">
-                      <h3 className="text-lg font-semibold text-gray-900">Buyer Information</h3>
+                      <h3 className="text-lg font-semibold text-slate-900">Buyer information</h3>
                       <Input
                         label="Full Name"
                         value={buyerInfo.buyer_name}
@@ -274,16 +324,18 @@ export default function CheckoutPage() {
                         isLoading={createOrderMutation.isPending}
                         fullWidth
                       >
-                        Create Order
+                        Create order
                       </Button>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={() => setStep('select')}
-                        fullWidth
-                      >
-                        Back
-                      </Button>
+                      {!cameFromBrowse && (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() => setStep('select')}
+                          fullWidth
+                        >
+                          Back
+                        </Button>
+                      )}
                     </div>
                   </form>
                 </CardContent>
@@ -295,9 +347,9 @@ export default function CheckoutPage() {
           <div className="lg:col-span-1">
             <Card className="sticky top-4">
               <CardHeader>
-                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                   <ShoppingCart className="w-5 h-5" />
-                  Cart ({cart.length})
+                  Order summary
                 </h3>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -307,43 +359,45 @@ export default function CheckoutPage() {
                       {cart.map((item) => (
                         <div
                           key={item.ticket_type_id}
-                          className="flex justify-between text-sm p-2 bg-gray-50 rounded"
+                          className="flex justify-between text-sm p-2 bg-slate-50 rounded"
                         >
                           <div>
-                            <p className="font-medium text-gray-900">{item.ticket_name}</p>
-                            <p className="text-gray-600">x{item.quantity}</p>
+                            <p className="font-medium text-slate-900">{item.ticket_name}</p>
+                            <p className="text-slate-600">x{item.quantity}</p>
                           </div>
                           <div className="text-right">
-                            <p className="font-medium text-gray-900">
+                            <p className="font-medium text-slate-900">
                               Br {(item.price * item.quantity).toFixed(2)}
                             </p>
-                            <button
-                              onClick={() => handleRemoveFromCart(item.ticket_type_id)}
-                              className="text-xs text-red-600 hover:underline"
-                            >
-                              Remove
-                            </button>
+                            {!cameFromBrowse && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveFromCart(item.ticket_type_id)}
+                                className="text-xs text-red-600 hover:underline"
+                              >
+                                Remove
+                              </button>
+                            )}
                           </div>
                         </div>
                       ))}
                     </div>
-                    <div className="border-t border-gray-200 pt-4">
+                    <div className="border-t border-slate-200 pt-4">
                       <div className="flex justify-between mb-4">
-                        <span className="font-semibold text-gray-900">Total:</span>
-                        <span className="text-xl font-bold text-gray-900">
+                        <span className="font-semibold text-slate-900">Total</span>
+                        <span className="text-xl font-bold text-slate-900">
                           Br {cartTotal.toFixed(2)}
                         </span>
                       </div>
-                      <Button
-                        onClick={() => setStep('checkout')}
-                        fullWidth
-                      >
-                        Proceed to Checkout
-                      </Button>
+                      {step === 'select' && (
+                        <Button onClick={() => setStep('checkout')} fullWidth>
+                          Continue
+                        </Button>
+                      )}
                     </div>
                   </>
                 ) : (
-                  <p className="text-center text-gray-600 py-4">No items in cart</p>
+                  <p className="text-center text-slate-600 py-4">No tickets selected yet</p>
                 )}
               </CardContent>
             </Card>

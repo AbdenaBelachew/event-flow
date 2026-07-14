@@ -2,10 +2,12 @@ const express = require("express");
 const { query } = require("../../config/db");
 const asyncHandler = require("../../utils/asyncHandler");
 const { ApiError } = require("../../utils/ApiError");
-const { authRequired } = require("../../middleware/auth");
+const { authRequired, authOptional } = require("../../middleware/auth");
 const { roleGuard } = require("../../middleware/roleGuard");
 
 const router = express.Router();
+
+const PUBLIC_EVENT_STATUSES = new Set(["published", "sold_out", "closed"]);
 
 function assertSameCompany(req, companyId) {
   if (req.user.role === "super_admin") return;
@@ -14,33 +16,46 @@ function assertSameCompany(req, companyId) {
   }
 }
 
+function isEventOwner(user, event) {
+  if (!user) return false;
+  if (user.role === "super_admin") return true;
+  if (user.role === "company_admin" && user.company_id === event.company_id) return true;
+  if (user.role === "event_staff" && user.assigned_event_id === event.id) return true;
+  return false;
+}
+
 async function loadEvent(id) {
   const { rows } = await query(`SELECT * FROM events WHERE id = $1`, [id]);
   if (!rows.length) throw new ApiError(404, "Event not found");
   return rows[0];
 }
 
-// GET /api/events  (authenticated: lists their company's events; public: lists all published events)
+// GET /api/events — public catalog (published events only)
 router.get(
   "/",
+  asyncHandler(async (_req, res) => {
+    const { rows } = await query(
+      `SELECT id, title, description, venue, city,
+              event_start, event_end, sales_start, sales_end,
+              status, cover_image_url, created_at
+       FROM events
+       WHERE status = 'published'
+       ORDER BY event_start DESC`
+    );
+    res.json({ events: rows });
+  })
+);
+
+// GET /api/events/mine — organizer: only this company's events
+router.get(
+  "/mine",
+  authRequired,
+  roleGuard("company_admin"),
   asyncHandler(async (req, res) => {
-    let rows;
-    
-    // If authenticated as company_admin, return their company's events
-    if (req.user && req.user.role === "company_admin") {
-      const result = await query(
-        `SELECT * FROM events WHERE company_id = $1 ORDER BY event_start DESC`,
-        [req.user.company_id]
-      );
-      rows = result.rows;
-    } else {
-      // Public request: return only published events
-      const result = await query(
-        `SELECT * FROM events WHERE status = 'published' ORDER BY event_start DESC`
-      );
-      rows = result.rows;
-    }
-    
+    const { rows } = await query(
+      `SELECT * FROM events WHERE company_id = $1 ORDER BY event_start DESC`,
+      [req.user.company_id]
+    );
     res.json({ events: rows });
   })
 );
@@ -81,12 +96,19 @@ router.post(
   })
 );
 
-// GET /api/events/:id  (public — published events; owners can view any status)
+// GET /api/events/:id  (public statuses; owners can view drafts too)
 router.get(
   "/:id",
+  authOptional,
   asyncHandler(async (req, res) => {
     const event = await loadEvent(req.params.id);
-    res.json({ event });
+    const owner = isEventOwner(req.user, event);
+
+    if (!PUBLIC_EVENT_STATUSES.has(event.status) && !owner) {
+      throw new ApiError(404, "Event not found");
+    }
+
+    res.json({ event, is_owner: owner });
   })
 );
 

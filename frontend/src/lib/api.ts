@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosError } from 'axios'
+import { clearAppCache } from './queryClient'
 
 declare const importMeta: any
 const API_URL = 'http://localhost:4000/api'
@@ -24,6 +25,7 @@ api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     if (error.response?.status === 401) {
+      clearAppCache()
       localStorage.removeItem('token')
       localStorage.removeItem('user')
       localStorage.removeItem('company')
@@ -53,9 +55,11 @@ export const authAPI = {
 
 // Events endpoints
 export const eventsAPI = {
-  listMyEvents: () => api.get('/events'),
+  /** Organizer dashboard — only the logged-in company's events */
+  listMyEvents: () => api.get('/events/mine'),
 
-  listPublished: () => api.get('/events', { params: {} }),
+  /** Public catalog of published events */
+  listPublished: () => api.get('/events'),
 
   createEvent: (data: {
     title: string
@@ -137,12 +141,33 @@ export const ordersAPI = {
 
   getOrder: (id: string) => api.get(`/orders/${id}`),
 
+  lookup: (data: {
+    order_id?: string
+    ticket_code?: string
+    email?: string
+    phone?: string
+  }) => api.post('/orders/lookup', data),
+
   initiatePay: (orderId: string, gateway: string = 'chapa') =>
     api.post(`/orders/${orderId}/pay`, { gateway }),
+
+  submitPaymentProof: (
+    orderId: string,
+    data: { tx_code: string; reference_code: string; gateway?: string }
+  ) => api.post(`/orders/${orderId}/payment-proof`, data),
 }
 
 // Payments endpoints
 export const paymentsAPI = {
+  listPending: (eventId?: string) =>
+    api.get('/payments/pending', { params: eventId ? { event_id: eventId } : {} }),
+
+  approve: (paymentId: string, note?: string) =>
+    api.post(`/payments/${paymentId}/approve`, { note }),
+
+  reject: (paymentId: string, note?: string) =>
+    api.post(`/payments/${paymentId}/reject`, { note }),
+
   verifyChapa: (tx_ref: string) =>
     api.get(`/payments/verify/chapa?tx_ref=${tx_ref}`),
 

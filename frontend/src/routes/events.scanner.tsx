@@ -1,10 +1,11 @@
 import { useRef, useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useMutation } from '@tanstack/react-query'
-import { ticketsAPI } from '../lib/api'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { ticketsAPI, eventsAPI } from '../lib/api'
 import Alert from '../components/Alert'
 import Card, { CardContent } from '../components/Card'
 import { QrCode, CheckCircle, AlertCircle, ArrowLeft, Zap, Shield, Wifi } from 'lucide-react'
+import { useRequireEventOwner } from '../lib/event-access'
 
 interface ScanResult {
   success: boolean
@@ -25,9 +26,18 @@ export default function ScannerPage() {
   const [scanResult, setScanResult] = useState<ScanResult | null>(null)
   const [error, setError] = useState('')
 
+  const { data: event, isLoading: eventLoading } = useQuery({
+    queryKey: ['events', id],
+    queryFn: () => eventsAPI.getEvent(id!).then((res) => res.data.event),
+    enabled: !!id,
+  })
+  const isOwner = useRequireEventOwner(event, eventLoading)
+
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
+
+  if (event && !isOwner) return null
 
   const checkInMutation = useMutation({
     mutationFn: (code: string) => ticketsAPI.checkIn(code),

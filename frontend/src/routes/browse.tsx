@@ -175,8 +175,8 @@ export default function BrowsePage() {
     e.preventDefault()
     setRegistrationError('')
 
-    if (!registrationData.name || !registrationData.email) {
-      setRegistrationError('Name and email are required')
+    if (!registrationData.name || !registrationData.email || !registrationData.phone) {
+      setRegistrationError('Name, email, and phone are required')
       return
     }
 
@@ -185,10 +185,29 @@ export default function BrowsePage() {
       return
     }
 
-    // Store registration data and redirect to checkout
+    const ticket = availability?.ticket_types?.find((t: any) => t.id === selectedTicketId)
+    if (!ticket?.on_sale) {
+      setRegistrationError('That ticket is not on sale right now')
+      return
+    }
+
+    // Pass selection + buyer info so checkout does not ask again
     sessionStorage.setItem(
-      'registrantInfo',
-      JSON.stringify(registrationData)
+      'checkoutDraft',
+      JSON.stringify({
+        eventId: resolvedEventId,
+        eventSlug: sharedEvent ? slugify(sharedEvent.title) : null,
+        buyer: registrationData,
+        cart: [
+          {
+            ticket_type_id: ticket.id,
+            ticket_name: ticket.name,
+            price: Number(ticket.price_etb),
+            quantity,
+            holder_name: registrationData.name,
+          },
+        ],
+      })
     )
     navigate(`/events/${resolvedEventId}/checkout`)
   }
@@ -928,12 +947,13 @@ function EventDetailView(props: {
                       required
                     />
                     <Input
-                      label="Phone (optional)"
+                      label="Phone"
                       type="tel"
                       name="phone"
                       value={registrationData.phone}
                       onChange={handleRegistrationChange}
                       placeholder="+251..."
+                      required
                     />
 
                     {/* Subtotal */}
