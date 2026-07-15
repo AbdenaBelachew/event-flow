@@ -5,24 +5,29 @@ import { Link2, Copy, Check, ExternalLink } from 'lucide-react'
 import { eventsAPI } from '../lib/api'
 import { slugify } from '../lib/slug'
 import { cn } from '../lib/cn'
+import { useAuth } from '../lib/auth-context'
+import { isDoorChecker } from '../lib/event-access'
 
 export default function EventLinkWell() {
   const params = useParams<{ id?: string }>()
   const location = useLocation()
+  const { user } = useAuth()
   const [copied, setCopied] = useState(false)
 
   const eventId = params.id
+  const isScanner = /\/events\/[^/]+\/scanner\/?$/.test(location.pathname)
   const isEventRoute =
     !!eventId && /^\/events\/[^/]+(\/.*)?$/.test(location.pathname)
-
-  if (!isEventRoute) return null
+  const hide = !isEventRoute || isScanner || isDoorChecker(user)
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['events', eventId, 'linkWell'],
     queryFn: () => eventsAPI.getEvent(eventId!).then((res) => res.data.event),
-    enabled: !!eventId,
+    enabled: !!eventId && !hide,
     staleTime: 1000 * 60 * 5,
   })
+
+  if (hide) return null
 
   if (isLoading || isError || !data?.title) {
     return (
@@ -45,7 +50,11 @@ export default function EventLinkWell() {
       ta.value = shareLink
       document.body.appendChild(ta)
       ta.select()
-      try { document.execCommand('copy') } catch { /* ignore */ }
+      try {
+        document.execCommand('copy')
+      } catch {
+        /* ignore */
+      }
       document.body.removeChild(ta)
     }
     setCopied(true)

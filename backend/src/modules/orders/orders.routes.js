@@ -39,6 +39,9 @@ router.post(
       if (event.status !== "published") {
         throw new ApiError(409, "Event is not on sale");
       }
+      if (event.is_locked) {
+        throw new ApiError(409, "This event is currently locked and not accepting orders");
+      }
       const now = new Date();
       if (now < new Date(event.sales_start) || now > new Date(event.sales_end)) {
         throw new ApiError(409, "Sales window is closed for this event");

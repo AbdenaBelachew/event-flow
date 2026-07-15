@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const { env } = require("../config/env");
+const { query } = require("../config/db");
 const { ApiError } = require("../utils/ApiError");
 
 function signToken(user) {
@@ -28,23 +29,42 @@ function attachUserFromToken(req) {
   };
 }
 
-/** Requires a valid Bearer token; attaches req.user. */
-function authRequired(req, _res, next) {
+/** Requires a valid Bearer token; rejects locked accounts; attaches req.user. */
+async function authRequired(req, _res, next) {
   try {
     const user = attachUserFromToken(req);
     if (!user) return next(new ApiError(401, "Authentication required"));
+
+    const { rows } = await query(
+      `SELECT is_locked FROM users WHERE id = $1`,
+      [user.id]
+    );
+    if (!rows.length) return next(new ApiError(401, "Authentication required"));
+    if (rows[0].is_locked) {
+      return next(new ApiError(403, "Account is locked. Contact the platform owner."));
+    }
+
     req.user = user;
     return next();
-  } catch (_err) {
+  } catch (err) {
+    if (err instanceof ApiError) return next(err);
     return next(new ApiError(401, "Invalid or expired token"));
   }
 }
 
 /** Parses Bearer token when present; continues anonymously otherwise. */
-function authOptional(req, _res, next) {
+async function authOptional(req, _res, next) {
   try {
     const user = attachUserFromToken(req);
-    if (user) req.user = user;
+    if (user) {
+      const { rows } = await query(
+        `SELECT is_locked FROM users WHERE id = $1`,
+        [user.id]
+      );
+      if (rows.length && !rows[0].is_locked) {
+        req.user = user;
+      }
+    }
   } catch (_err) {
     // Ignore invalid tokens for optional auth
   }

@@ -1,8 +1,9 @@
-import { useState, type ReactNode } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../lib/auth-context'
 import { eventsAPI } from '../lib/api'
+import { isDoorChecker, staffHomePath, isSystemOwner, homePath } from '../lib/event-access'
 import Button from '../components/Button'
 import Badge from '../components/Badge'
 import Alert from '../components/Alert'
@@ -66,10 +67,25 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [filterStatus, setFilterStatus] = useState<string>('all')
 
+  // Door checkers → scanner; system owner → platform admin.
+  useEffect(() => {
+    if (isSystemOwner(user)) {
+      navigate(homePath(user), { replace: true })
+      return
+    }
+    const home = staffHomePath(user)
+    if (home) navigate(home, { replace: true })
+  }, [user, navigate])
+
   const { data, isLoading, isError } = useQuery({
     queryKey: ['events', 'my-events'],
     queryFn: () => eventsAPI.listMyEvents().then((res) => res.data.events),
+    enabled: !!user && user.role !== 'event_staff' && user.role !== 'super_admin',
   })
+
+  if (isDoorChecker(user) || isSystemOwner(user)) {
+    return null
+  }
 
   const events: Event[] = data || []
   const firstName = user?.full_name?.split(' ')[0] ?? 'there'

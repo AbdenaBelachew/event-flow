@@ -11,6 +11,7 @@ import HomePage from './routes/index'
 import LoginPage from './routes/login'
 import RegisterPage from './routes/register'
 import DashboardPage from './routes/dashboard'
+import AdminPage from './routes/admin'
 import CreateEventPage from './routes/events.create'
 import EventDetailPage from './routes/events.detail'
 import EditEventPage from './routes/events.edit'
@@ -43,6 +44,7 @@ export default function App() {
                 {/* Protected Routes */}
                 <Route element={<ProtectedRoute />}>
                   <Route path="/dashboard" element={<DashboardPage />} />
+                  <Route path="/admin" element={<AdminPage />} />
                   <Route path="/events/create" element={<CreateEventPage />} />
                   <Route path="/events/:id" element={<EventDetailPage />} />
                   <Route path="/events/:id/edit" element={<EditEventPage />} />

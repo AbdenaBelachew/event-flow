@@ -1,11 +1,106 @@
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { eventsAPI } from '../lib/api'
-import Card, { CardContent, CardHeader } from '../components/Card'
 import Button from '../components/Button'
 import Alert from '../components/Alert'
-import { Users, Banknote, TrendingUp, BarChart3, ArrowLeft, Sparkles, Ticket, CheckCircle2 } from 'lucide-react'
+import Badge from '../components/Badge'
+import {
+  Users,
+  Banknote,
+  ArrowLeft,
+  Ticket,
+  CheckCircle2,
+  UserX,
+  ScanLine,
+  Pencil,
+  CreditCard,
+  RefreshCw,
+  AlertCircle,
+} from 'lucide-react'
 import { useRequireEventOwner } from '../lib/event-access'
+import { cn } from '../lib/cn'
+
+function statusBadge(status: string) {
+  switch (status) {
+    case 'published':
+      return { variant: 'success' as const, label: 'Published' }
+    case 'draft':
+      return { variant: 'neutral' as const, label: 'Draft' }
+    case 'sold_out':
+      return { variant: 'danger' as const, label: 'Sold out' }
+    case 'closed':
+      return { variant: 'warning' as const, label: 'Closed' }
+    default:
+      return { variant: 'neutral' as const, label: status || 'Unknown' }
+  }
+}
+
+function formatBr(n: number) {
+  return `Br ${Number(n || 0).toLocaleString('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`
+}
+
+function StatCard({
+  label,
+  value,
+  hint,
+  icon,
+  accent,
+}: {
+  label: string
+  value: React.ReactNode
+  hint?: string
+  icon: React.ReactNode
+  accent?: string
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200/80 bg-white/80 shadow-sm p-4 sm:p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            {label}
+          </p>
+          <p className={cn('text-2xl sm:text-3xl font-extrabold tracking-tight mt-1.5', accent || 'text-slate-900')}>
+            {value}
+          </p>
+          {hint && <p className="text-xs text-slate-500 mt-1.5">{hint}</p>}
+        </div>
+        <div className="w-10 h-10 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center flex-shrink-0">
+          {icon}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ProgressBar({
+  value,
+  max,
+  tone = 'brand',
+}: {
+  value: number
+  max: number
+  tone?: 'brand' | 'amber' | 'red'
+}) {
+  const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0
+  const bar =
+    tone === 'red'
+      ? 'bg-red-500'
+      : tone === 'amber'
+        ? 'bg-amber-500'
+        : 'bg-brand-500'
+
+  return (
+    <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+      <div
+        className={cn('h-full rounded-full transition-all duration-500', bar)}
+        style={{ width: `${pct}%` }}
+      />
+    </div>
+  )
+}
 
 export default function StatsPage() {
   const { id } = useParams<{ id: string }>()
@@ -18,30 +113,30 @@ export default function StatsPage() {
   })
   const isOwner = useRequireEventOwner(event, eventLoading)
 
-  const { data: stats, isLoading, isError } = useQuery({
+  const {
+    data: stats,
+    isLoading,
+    isError,
+    isFetching,
+    refetch,
+  } = useQuery({
     queryKey: ['events', id, 'stats'],
     queryFn: async () => {
       const res = await eventsAPI.getStats(id!)
       return res.data
     },
     enabled: !!id && !!event && isOwner,
+    refetchInterval: 30_000,
   })
 
   if (event && !isOwner) return null
 
-  if (eventLoading || isLoading) {
+  if (eventLoading || (isLoading && !stats)) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-brand-50 via-brand-50 to-brand-50">
+      <div className="min-h-screen gradient-bg-soft flex items-center justify-center">
         <div className="text-center">
-          <div className="relative w-20 h-20 xs:w-24 xs:h-24 mx-auto mb-6">
-            <div className="absolute inset-0 rounded-full border-4 border-brand-200 animate-pulse"></div>
-            <div className="absolute inset-0 rounded-full border-4 border-t-brand-600 border-r-transparent border-b-transparent border-l-transparent animate-spin"></div>
-            <div className="absolute inset-3 rounded-full bg-gradient-to-br from-brand-500 to-brand-500 animate-pulse flex items-center justify-center">
-              <BarChart3 className="w-8 h-8 xs:w-10 xs:h-10 text-white" />
-            </div>
-          </div>
-          <h2 className="text-xl xs:text-2xl font-bold text-gray-900 mb-2">Loading Statistics...</h2>
-          <p className="text-sm xs:text-base text-gray-600">Fetching your event analytics</p>
+          <div className="w-10 h-10 mx-auto mb-4 rounded-full border-2 border-brand-200 border-t-brand-600 animate-spin" />
+          <p className="text-sm text-slate-500">Loading statistics…</p>
         </div>
       </div>
     )
@@ -49,407 +144,406 @@ export default function StatsPage() {
 
   if (isError || !stats) {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <Alert type="error" message="Failed to load event statistics" />
-        <div className="mt-4">
-          <Button onClick={() => navigate(`/events/${id}`)}>← Back to Event</Button>
+      <div className="min-h-screen gradient-bg-soft">
+        <div className="max-w-lg mx-auto px-4 py-16 text-center">
+          <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="w-7 h-7 text-red-500" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 mb-2">Couldn’t load stats</h2>
+          <p className="text-sm text-slate-500 mb-6">
+            Something went wrong fetching analytics for this event.
+          </p>
+          <div className="flex gap-2 justify-center">
+            <Button variant="outline" onClick={() => navigate(`/events/${id}`)}>
+              Back to event
+            </Button>
+            <Button onClick={() => refetch()}>Try again</Button>
+          </div>
         </div>
       </div>
     )
   }
 
-  const capacity = stats?.capacity || 0
-  const occupied = stats?.checked_in || 0
-  const occupancyPercent = capacity > 0 ? ((occupied / capacity) * 100).toFixed(1) : '0'
+  const capacity = stats.capacity || 0
+  const sold = stats.sold || 0
+  const issued = stats.tickets_issued || 0
+  const checkedIn = stats.checked_in || 0
+  const noShow = stats.no_show ?? Math.max(issued - checkedIn, 0)
+  const revenue = Number(stats.revenue_etb || 0)
+  const sellThrough = capacity > 0 ? (sold / capacity) * 100 : 0
+  const attendanceRate = issued > 0 ? (checkedIn / issued) * 100 : 0
+  const avgTicket = sold > 0 ? revenue / sold : 0
+  const badge = statusBadge(event?.status)
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-brand-50/40 to-brand-50/40">
-      {/* Animated Background Decorations */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-brand-400/10 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-brand-400/10 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-brand-400/5 rounded-full blur-3xl animate-pulse"></div>
-      </div>
-
-      <div className="relative max-w-[1800px] mx-auto px-3 xs:px-4 sm:px-5 md:px-6 lg:px-8 xl:px-10 py-4 xs:py-5 sm:py-6 md:py-8 lg:py-10">
-        {/* Header Section */}
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4 mb-6 xs:mb-7 sm:mb-8 md:mb-10">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 xs:gap-3 mb-2">
-              <div className="w-10 h-10 xs:w-12 xs:h-12 rounded-xl bg-gradient-to-br from-brand-500 to-brand-600 flex items-center justify-center shadow-lg">
-                <BarChart3 className="w-5 h-5 xs:w-6 xs:h-6 text-white" />
+    <div className="min-h-screen gradient-bg-soft">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-10">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-8 animate-fade-in">
+          <div className="flex items-start gap-3 min-w-0">
+            <button
+              type="button"
+              onClick={() => navigate(`/events/${id}`)}
+              className="mt-1 p-2 -ml-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-white/80 transition"
+              aria-label="Back to event"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2 mb-1">
+                <Badge variant={badge.variant} dot>
+                  {badge.label}
+                </Badge>
+                <span className="text-xs text-slate-400">Statistics</span>
               </div>
-              <div>
-                <h1 className="text-2xl xs:text-3xl sm:text-4xl md:text-5xl font-extrabold bg-gradient-to-r from-gray-900 via-brand-900 to-brand-900 bg-clip-text text-transparent">
-                  Event Statistics
-                </h1>
-              </div>
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-slate-900 truncate">
+                {event?.title || 'Event stats'}
+              </h1>
+              <p className="text-sm text-slate-500 mt-1">
+                Revenue, tickets, and door check-ins
+                {isFetching && !isLoading ? (
+                  <span className="ml-2 text-brand-600">Updating…</span>
+                ) : null}
+              </p>
             </div>
-            <p className="text-xs xs:text-sm sm:text-base text-gray-600 flex items-center gap-2">
-
-              Real-time analytics and insights for your event
-            </p>
           </div>
-          <Button 
-            variant="secondary" 
-            onClick={() => navigate(`/events/${id}`)}
-            className="self-start sm:self-auto text-sm xs:text-base shrink-0 shadow-md hover:shadow-lg transition-all"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Event
-          </Button>
+
+          <div className="flex flex-wrap items-center gap-2 flex-shrink-0 sm:pt-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              leftIcon={<RefreshCw className={cn('w-3.5 h-3.5', isFetching && 'animate-spin')} />}
+            >
+              Refresh
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(`/events/${id}/scanner`)}
+              leftIcon={<ScanLine className="w-3.5 h-3.5" />}
+            >
+              Scanner
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => navigate(`/events/${id}/edit`)}
+              leftIcon={<Pencil className="w-3.5 h-3.5" />}
+            >
+              Edit
+            </Button>
+          </div>
         </div>
 
-        {/* Main Grid Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 xs:gap-5 sm:gap-6 md:gap-7">
-          
-          {/* LEFT COLUMN - Main KPIs */}
-          <div className="lg:col-span-8 space-y-4 xs:space-y-5 sm:space-y-6">
-            
-            {/* Top Row - Revenue & Tickets */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 xs:gap-5 sm:gap-6">
-              
-              {/* Total Revenue */}
-              <Card className="relative overflow-hidden bg-gradient-to-br from-brand-500 via-purple-600 to-brand-600 border-0 shadow-xl hover:shadow-2xl transition-all duration-300 group">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl transform translate-x-16 -translate-y-16"></div>
-                <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full blur-xl transform -translate-x-8 translate-y-8"></div>
-                
-                <CardContent className="py-6 xs:py-7 sm:py-8 relative z-10">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className="w-10 h-10 xs:w-12 xs:h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                          <Banknote className="w-5 h-5 xs:w-6 xs:h-6 text-white" />
-                        </div>
-                        <p className="text-sm xs:text-base text-white/90 font-semibold">Total Revenue</p>
-                      </div>
-                      <p className="text-3xl xs:text-4xl sm:text-5xl font-extrabold text-white mt-2 tracking-tight">
-                        Br {(stats?.revenue_etb || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </p>
-                      <p className="text-xs xs:text-sm text-white/80 mt-2">
-                        From {stats?.sold || 0} tickets sold
-                      </p>
-                    </div>
-                    <div className="w-16 h-16 xs:w-20 xs:h-20 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                      <TrendingUp className="w-8 h-8 xs:w-10 xs:h-10 text-white/60" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+        {/* KPI row */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8 stagger">
+          <StatCard
+            label="Revenue"
+            value={formatBr(revenue)}
+            hint={`${sold} tickets sold`}
+            icon={<Banknote className="w-5 h-5" />}
+            accent="text-brand-700"
+          />
+          <StatCard
+            label="Tickets sold"
+            value={sold.toLocaleString()}
+            hint={capacity > 0 ? `${sellThrough.toFixed(0)}% of capacity` : 'No capacity set'}
+            icon={<Ticket className="w-5 h-5" />}
+          />
+          <StatCard
+            label="Checked in"
+            value={checkedIn.toLocaleString()}
+            hint={issued > 0 ? `${attendanceRate.toFixed(0)}% of issued` : 'No tickets issued yet'}
+            icon={<CheckCircle2 className="w-5 h-5" />}
+          />
+          <StatCard
+            label="No-shows"
+            value={noShow.toLocaleString()}
+            hint={
+              issued > 0
+                ? `${((noShow / issued) * 100).toFixed(0)}% of issued tickets`
+                : 'Waiting for sales'
+            }
+            icon={<UserX className="w-5 h-5" />}
+          />
+        </div>
 
-              {/* Tickets Sold */}
-              <Card className="relative overflow-hidden bg-gradient-to-br from-purple-500 via-purple-700 to-purple-900 border-0 shadow-xl hover:shadow-2xl transition-all duration-300 group">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl transform translate-x-16 -translate-y-16"></div>
-                <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full blur-xl transform -translate-x-8 translate-y-8"></div>
-                
-                <CardContent className="py-6 xs:py-7 sm:py-8 relative z-10">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className="w-10 h-10 xs:w-12 xs:h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                          <Ticket className="w-5 h-5 xs:w-6 xs:h-6 text-white" />
-                        </div>
-                        <p className="text-sm xs:text-base text-white/90 font-semibold">Tickets Sold</p>
-                      </div>
-                      <p className="text-3xl xs:text-4xl sm:text-5xl font-extrabold text-white mt-2">
-                        {stats?.sold || 0}
-                      </p>
-                      <p className="text-xs xs:text-sm text-white/80 mt-2">
-                        Total tickets distributed
-                      </p>
-                    </div>
-                    <div className="w-16 h-16 xs:w-20 xs:h-20 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                      <TrendingUp className="w-8 h-8 xs:w-10 xs:h-10 text-white/60" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-6 items-start">
+          {/* Main column */}
+          <div className="lg:col-span-8 space-y-5">
+            {/* Attendance funnel */}
+            <section className="rounded-2xl border border-slate-200/80 bg-white/80 shadow-sm">
+              <div className="px-5 py-4 border-b border-slate-100">
+                <h2 className="text-base font-semibold text-slate-900">Attendance</h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  From capacity through door check-in
+                </p>
+              </div>
+              <div className="p-5 space-y-5">
+                <FunnelRow
+                  label="Capacity"
+                  value={capacity}
+                  max={Math.max(capacity, 1)}
+                  tone="brand"
+                />
+                <FunnelRow
+                  label="Sold"
+                  value={sold}
+                  max={Math.max(capacity, sold, 1)}
+                  tone="brand"
+                />
+                <FunnelRow
+                  label="Issued"
+                  value={issued}
+                  max={Math.max(capacity, issued, 1)}
+                  tone="brand"
+                />
+                <FunnelRow
+                  label="Checked in"
+                  value={checkedIn}
+                  max={Math.max(issued, checkedIn, 1)}
+                  tone="brand"
+                />
+                <FunnelRow
+                  label="No-shows"
+                  value={noShow}
+                  max={Math.max(issued, noShow, 1)}
+                  tone={noShow > 0 ? 'amber' : 'brand'}
+                />
+              </div>
+            </section>
 
-            {/* Bottom Row - Checked In & Occupancy */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 xs:gap-5 sm:gap-6">
-              
-              {/* Checked In Card */}
-              <Card className="border-2 border-brand-100 bg-white hover:border-brand-300 hover:shadow-lg transition-all duration-300 group">
-                <CardContent className="py-5 xs:py-6">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-10 h-10 rounded-lg bg-brand-100 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                          <CheckCircle2 className="w-5 h-5 text-brand-600" />
-                        </div>
-                        <p className="text-xs xs:text-sm text-gray-600 font-semibold uppercase tracking-wide">Checked In</p>
-                      </div>
-                      <p className="text-3xl xs:text-4xl font-extrabold text-gray-900 mt-2">
-                        {stats?.checked_in || 0}
-                      </p>
-                      <p className="text-xs xs:text-sm text-gray-500 mt-1">
-                        Attendees present
-                      </p>
-                    </div>
-                    <Users className="w-12 h-12 xs:w-14 xs:h-14 text-brand-600/20 group-hover:text-brand-600/30 transition-colors" />
-                  </div>
-                </CardContent>
-              </Card>
+            {/* Ticket types */}
+            <section className="rounded-2xl border border-slate-200/80 bg-white/80 shadow-sm">
+              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-semibold text-slate-900">By ticket type</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">Sales and revenue per tier</p>
+                </div>
+                {stats.by_ticket_type?.length > 0 && (
+                  <Badge variant="brand">
+                    {stats.by_ticket_type.length}{' '}
+                    {stats.by_ticket_type.length === 1 ? 'type' : 'types'}
+                  </Badge>
+                )}
+              </div>
 
-              {/* Occupancy Card */}
-              <Card className="border-2 border-orange-100 bg-white hover:border-orange-300 hover:shadow-lg transition-all duration-300 group">
-                <CardContent className="py-5 xs:py-6">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                          <BarChart3 className="w-5 h-5 text-orange-600" />
-                        </div>
-                        <p className="text-xs xs:text-sm text-gray-600 font-semibold uppercase tracking-wide">Occupancy</p>
-                      </div>
-                      <div className="flex items-baseline gap-2">
-                        <p className="text-3xl xs:text-4xl font-extrabold text-gray-900 mt-2">
-                          {occupancyPercent}%
-                        </p>
-                        <p className="text-sm xs:text-base text-gray-500 font-medium">
-                          ({occupied} / {capacity})
-                        </p>
-                      </div>
-                      
-                      {/* Occupancy Progress Bar */}
-                      <div className="mt-3 w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
-                        <div
-                          className="bg-gradient-to-r from-orange-500 to-amber-500 h-full rounded-full transition-all duration-1000 ease-out"
-                          style={{ width: `${occupancyPercent}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Ticket Types Breakdown */}
-            {stats?.by_ticket_type && stats?.by_ticket_type.length > 0 && (
-              <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300 bg-white">
-                <CardHeader className="px-4 xs:px-5 sm:px-6 py-4 xs:py-5 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-brand-50/30">
-                  <div className="flex flex-col xs:flex-row xs:items-center xs:justify-between gap-2">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-brand-500 to-brand-600 flex items-center justify-center">
-                        <Ticket className="w-5 h-5 text-white" />
-                      </div>
-                      <div>
-                        <h2 className="text-lg xs:text-xl sm:text-2xl font-bold text-gray-900">
-                          Ticket Types Performance
-                        </h2>
-                        <p className="text-xs xs:text-sm text-gray-600 mt-0.5">
-                          Sales breakdown by ticket category
-                        </p>
-                      </div>
-                    </div>
-                    <span className="hidden xs:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-brand-100 text-brand-700 text-xs font-semibold">
-                      {stats.by_ticket_type.length} {stats.by_ticket_type.length === 1 ? 'Type' : 'Types'}
-                    </span>
-                  </div>
-                </CardHeader>
-                <CardContent className="px-4 xs:px-5 sm:px-6 py-5 xs:py-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 xs:gap-5">
-                    {stats.by_ticket_type.map((type: any, index: number) => {
-                      const soldPercent =
+              <div className="p-5">
+                {stats.by_ticket_type?.length > 0 ? (
+                  <div className="space-y-3">
+                    {stats.by_ticket_type.map((type: any) => {
+                      const remaining = Math.max(
+                        (type.quantity_total || 0) - (type.quantity_sold || 0),
+                        0
+                      )
+                      const soldPct =
                         type.quantity_total > 0
-                          ? ((type.quantity_sold / type.quantity_total) * 100).toFixed(0)
+                          ? Math.round((type.quantity_sold / type.quantity_total) * 100)
                           : 0
-                      const remaining = type.quantity_total - type.quantity_sold
-                      const isAlmostSoldOut = remaining > 0 && remaining <= 10
-                      
+                      const typeRevenue =
+                        type.revenue_etb ?? type.quantity_sold * type.price_etb
+                      const tone =
+                        remaining === 0
+                          ? 'red'
+                          : remaining <= 10 && type.quantity_total > 10
+                            ? 'amber'
+                            : 'brand'
+
                       return (
-                        <div 
-                          key={index} 
-                          className="relative p-4 xs:p-5 border-2 border-gray-100 rounded-xl hover:border-brand-200 hover:shadow-md transition-all duration-300 bg-gradient-to-br from-white to-gray-50/50 group"
+                        <div
+                          key={type.name}
+                          className="rounded-xl border border-slate-200 p-4 hover:border-brand-200 hover:bg-brand-50/20 transition"
                         >
-                          {/* Badge for almost sold out */}
-                          {isAlmostSoldOut && (
-                            <div className="absolute -top-2 -right-2 px-2.5 py-1 bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[10px] xs:text-xs font-bold rounded-full shadow-lg animate-pulse">
-                              Almost Sold Out!
-                            </div>
-                          )}
-                          
-                          {remaining === 0 && (
-                            <div className="absolute -top-2 -right-2 px-2.5 py-1 bg-gradient-to-r from-red-500 to-brand-500 text-white text-[10px] xs:text-xs font-bold rounded-full shadow-lg">
-                              Sold Out
-                            </div>
-                          )}
-
-                          <div className="flex flex-col xs:flex-row xs:justify-between xs:items-start gap-2 xs:gap-3 mb-3">
-                            <div className="flex-1 min-w-0">
-                              <h3 className="font-bold text-base xs:text-lg text-gray-900 truncate group-hover:text-brand-600 transition-colors">
-                                {type.name}
-                              </h3>
-                              <div className="flex items-center gap-2 mt-1">
-                                <span className="text-sm xs:text-base font-semibold text-brand-600">
-                                  Br {type.price_etb}
-                                </span>
-                                <span className="text-xs text-gray-500">per ticket</span>
+                          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 mb-3">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h3 className="font-semibold text-slate-900 truncate">
+                                  {type.name}
+                                </h3>
+                                {remaining === 0 && <Badge variant="danger">Sold out</Badge>}
+                                {remaining > 0 &&
+                                  remaining <= 10 &&
+                                  type.quantity_total > 10 && (
+                                    <Badge variant="warning">Low stock</Badge>
+                                  )}
                               </div>
+                              <p className="text-sm text-slate-500 mt-0.5">
+                                {formatBr(type.price_etb)} each
+                              </p>
                             </div>
-                            <div className="text-left xs:text-right shrink-0">
-                              <div className="text-xl xs:text-2xl font-extrabold text-gray-900">
+                            <div className="text-left sm:text-right flex-shrink-0">
+                              <p className="text-lg font-bold text-slate-900">
                                 {type.quantity_sold}
-                              </div>
-                              <div className="text-[10px] xs:text-xs text-gray-500 font-medium">
-                                of {type.quantity_total}
-                              </div>
+                                <span className="text-sm font-medium text-slate-400">
+                                  {' '}
+                                  / {type.quantity_total}
+                                </span>
+                              </p>
+                              <p className="text-xs font-medium text-brand-700 mt-0.5">
+                                {formatBr(typeRevenue)}
+                              </p>
                             </div>
-                          </div>
-                          
-                          {/* Progress Bar with Gradient */}
-                          <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden mb-2.5">
-                            <div
-                              className={`h-full rounded-full transition-all duration-700 ease-out ${
-                                remaining === 0 
-                                  ? 'bg-gradient-to-r from-red-500 to-brand-500' 
-                                  : isAlmostSoldOut 
-                                  ? 'bg-gradient-to-r from-amber-500 to-orange-500'
-                                  : 'bg-gradient-to-r from-brand-500 to-brand-500'
-                              }`}
-                              style={{ width: `${soldPercent}%` }}
-                            ></div>
-                          </div>
-                          
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs xs:text-sm font-bold text-gray-900">
-                              {soldPercent}% sold
-                            </span>
-                            <span className={`text-xs xs:text-sm font-semibold ${
-                              remaining === 0 ? 'text-red-600' : isAlmostSoldOut ? 'text-amber-600' : 'text-brand-600'
-                            }`}>
-                              {remaining === 0 ? 'No tickets left' : `${remaining} remaining`}
-                            </span>
                           </div>
 
-                          {/* Revenue for this ticket type */}
-                          <div className="mt-3 pt-3 border-t border-gray-100">
-                            <div className="flex items-center justify-between text-xs xs:text-sm">
-                              <span className="text-gray-600">Revenue from type:</span>
-                              <span className="font-bold text-gray-900">
-                                Br {(type.quantity_sold * type.price_etb).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                              </span>
-                            </div>
+                          <ProgressBar
+                            value={type.quantity_sold}
+                            max={type.quantity_total || 1}
+                            tone={tone}
+                          />
+                          <div className="flex justify-between mt-2 text-xs">
+                            <span className="font-medium text-slate-700">{soldPct}% sold</span>
+                            <span
+                              className={cn(
+                                'font-medium',
+                                remaining === 0
+                                  ? 'text-red-600'
+                                  : remaining <= 10
+                                    ? 'text-amber-600'
+                                    : 'text-slate-500'
+                              )}
+                            >
+                              {remaining === 0 ? 'None left' : `${remaining} remaining`}
+                            </span>
                           </div>
                         </div>
                       )
                     })}
                   </div>
-                </CardContent>
-              </Card>
+                ) : (
+                  <div className="text-center py-10 px-4">
+                    <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center mx-auto mb-3">
+                      <Ticket className="w-6 h-6 text-slate-400" />
+                    </div>
+                    <p className="font-semibold text-slate-800">No ticket types yet</p>
+                    <p className="text-sm text-slate-500 mt-1 mb-4">
+                      Add tickets on the edit page to start tracking sales.
+                    </p>
+                    <Button
+                      type="button"
+                      onClick={() => navigate(`/events/${id}/edit`)}
+                      leftIcon={<Pencil className="w-4 h-4" />}
+                    >
+                      Manage tickets
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </section>
+          </div>
+
+          {/* Sidebar */}
+          <aside className="lg:col-span-4 space-y-5 lg:sticky lg:top-24">
+            <section className="rounded-2xl border border-slate-200/80 bg-white/80 shadow-sm p-5">
+              <h2 className="text-sm font-semibold text-slate-900 mb-4">Performance</h2>
+              <dl className="space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-sm text-slate-500">Avg. ticket price</dt>
+                  <dd className="text-sm font-semibold text-slate-900">{formatBr(avgTicket)}</dd>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between gap-3 mb-1.5">
+                    <dt className="text-sm text-slate-500">Sell-through</dt>
+                    <dd className="text-sm font-semibold text-slate-900">
+                      {sellThrough.toFixed(0)}%
+                    </dd>
+                  </div>
+                  <ProgressBar value={sold} max={Math.max(capacity, 1)} />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between gap-3 mb-1.5">
+                    <dt className="text-sm text-slate-500">Attendance rate</dt>
+                    <dd className="text-sm font-semibold text-slate-900">
+                      {attendanceRate.toFixed(0)}%
+                    </dd>
+                  </div>
+                  <ProgressBar value={checkedIn} max={Math.max(issued, 1)} />
+                </div>
+                <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-100">
+                  <dt className="text-sm text-slate-500">Tickets issued</dt>
+                  <dd className="text-sm font-semibold text-slate-900">
+                    {issued.toLocaleString()}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-sm text-slate-500">Capacity</dt>
+                  <dd className="text-sm font-semibold text-slate-900">
+                    {capacity.toLocaleString()}
+                  </dd>
+                </div>
+              </dl>
+            </section>
+
+            <section className="rounded-2xl border border-slate-200/80 bg-white/80 shadow-sm p-4 space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 px-1 mb-2">
+                Quick links
+              </p>
+              <Link
+                to={`/events/${id}/scanner`}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-slate-700 hover:bg-slate-50 transition"
+              >
+                <ScanLine className="w-4 h-4 text-slate-400" />
+                Door scanner
+              </Link>
+              <Link
+                to={`/events/${id}/payments`}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-slate-700 hover:bg-slate-50 transition"
+              >
+                <CreditCard className="w-4 h-4 text-slate-400" />
+                Payments
+              </Link>
+              <Link
+                to={`/events/${id}/edit`}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-slate-700 hover:bg-slate-50 transition"
+              >
+                <Pencil className="w-4 h-4 text-slate-400" />
+                Edit event
+              </Link>
+              <Link
+                to={`/events/${id}`}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-slate-700 hover:bg-slate-50 transition"
+              >
+                <Users className="w-4 h-4 text-slate-400" />
+                Public page
+              </Link>
+            </section>
+
+            {event?.status === 'draft' && (
+              <Alert
+                type="info"
+                message="This event is still a draft. Publish it so guests can buy tickets."
+              />
             )}
-          </div>
-
-          {/* RIGHT COLUMN - Summary & Insights */}
-          <div className="lg:col-span-4 space-y-4 xs:space-y-5 sm:space-y-6">
-            
-            {/* Quick Summary Card */}
-            <Card className="border-0 bg-gradient-to-br from-purple-500 via-purple-700 to-purple-900 shadow-xl hover:shadow-2xl transition-all duration-300 text-white">
-              <CardHeader className="px-4 xs:px-5 py-4 xs:py-5 border-b border-white/20">
-                <div className="flex items-center gap-2">
-                  
-                  <h3 className="text-lg xs:text-xl font-bold">Quick Summary</h3>
-                </div>
-              </CardHeader>
-              <CardContent className="px-4 xs:px-5 py-5">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between py-3 border-b border-white/20">
-                    <span className="text-sm text-white/90">Total Tickets</span>
-                    <span className="text-lg font-bold">{stats?.sold || 0}</span>
-                  </div>
-                  <div className="flex items-center justify-between py-3 border-b border-white/20">
-                    <span className="text-sm text-white/90">Revenue</span>
-                    <span className="text-lg font-bold">Br {(stats?.revenue_etb || 0).toFixed(0)}</span>
-                  </div>
-                  <div className="flex items-center justify-between py-3 border-b border-white/20">
-                    <span className="text-sm text-white/90">Check-ins</span>
-                    <span className="text-lg font-bold">{stats?.checked_in || 0}</span>
-                  </div>
-                  <div className="flex items-center justify-between py-3">
-                    <span className="text-sm text-white/90">Capacity</span>
-                    <span className="text-lg font-bold">{capacity}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Performance Insights */}
-            <Card className="border-2 border-brand-100 bg-white hover:border-brand-300 hover:shadow-lg transition-all duration-300">
-              <CardHeader className="px-4 xs:px-5 py-4 border-b border-gray-100">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-brand-100 flex items-center justify-center">
-                    <TrendingUp className="w-4 h-4 text-brand-600" />
-                  </div>
-                  <h3 className="text-base xs:text-lg font-bold text-gray-900">Performance</h3>
-                </div>
-              </CardHeader>
-              <CardContent className="px-4 xs:px-5 py-5">
-                <div className="space-y-4">
-                  {/* Avg Revenue per Ticket */}
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs xs:text-sm text-gray-600">Avg. Ticket Price</span>
-                      <span className="text-sm xs:text-base font-bold text-gray-900">
-                        Br {stats?.sold > 0 ? ((stats?.revenue_etb || 0) / stats.sold).toFixed(2) : '0.00'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Attendance Rate */}
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs xs:text-sm text-gray-600">Attendance Rate</span>
-                      <span className="text-sm xs:text-base font-bold text-gray-900">
-                        {stats?.sold > 0 ? (((stats?.checked_in || 0) / stats.sold) * 100).toFixed(1) : '0'}%
-                      </span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-                      <div
-                        className="bg-gradient-to-r from-brand-500 to-brand-500 h-full rounded-full transition-all duration-700"
-                        style={{ 
-                          width: `${stats?.sold > 0 ? (((stats?.checked_in || 0) / stats.sold) * 100) : 0}%` 
-                        }}
-                      ></div>
-                    </div>
-                  </div>
-
-                  {/* Capacity Usage */}
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs xs:text-sm text-gray-600">Capacity Usage</span>
-                      <span className="text-sm xs:text-base font-bold text-gray-900">
-                        {occupancyPercent}%
-                      </span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-                      <div
-                        className="bg-gradient-to-r from-orange-500 to-amber-500 h-full rounded-full transition-all duration-700"
-                        style={{ width: `${occupancyPercent}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Status Badge */}
-            <Card className="border-0 bg-gradient-to-r from-brand-50 to-brand-50 border-l-4 border-l-brand-500">
-              <CardContent className="px-4 xs:px-5 py-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-brand-500 flex items-center justify-center">
-                    <CheckCircle2 className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900">Event is Live</p>
-                    <p className="text-xs text-gray-600 mt-0.5">All systems operational</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          </aside>
         </div>
       </div>
+    </div>
+  )
+}
+
+function FunnelRow({
+  label,
+  value,
+  max,
+  tone,
+}: {
+  label: string
+  value: number
+  max: number
+  tone: 'brand' | 'amber' | 'red'
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3 mb-1.5">
+        <span className="text-sm font-medium text-slate-600">{label}</span>
+        <span className="text-sm font-bold text-slate-900 tabular-nums">
+          {value.toLocaleString()}
+        </span>
+      </div>
+      <ProgressBar value={value} max={max} tone={tone} />
     </div>
   )
 }

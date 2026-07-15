@@ -22,8 +22,9 @@ npm start                     # http://localhost:4000
 ```
 
 Seeded logins (password `Password123!`):
-- Organizer admin: `admin@addisevents.et`
-- Gate staff:      `staff@addisevents.et`
+- System owner:    `owner@eventflow.et`  → React `/admin`
+- Organizer admin: `admin@addisevents.et` → React `/dashboard`
+- Gate staff:      `staff@addisevents.et` → assigned event scanner
 
 The seed prints the demo **Event ID** — open `http://localhost:4000/?event=<id>`.
 
@@ -69,6 +70,13 @@ twice.
 POST   /api/auth/register-company
 POST   /api/auth/login
 GET    /api/auth/me
+
+GET    /api/admin/overview                  (super_admin)
+GET    /api/admin/companies                 (super_admin)
+POST   /api/admin/companies                 (super_admin)
+GET    /api/admin/users                     (super_admin)
+POST   /api/admin/users                     (super_admin)
+GET    /api/admin/events                    (super_admin)
 
 POST   /api/events                          (company_admin)
 GET    /api/events/:id

@@ -193,7 +193,7 @@ export default function OrderPage() {
 
   return (
     <div className="min-h-screen bg-slate-50/60">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Button variant="ghost" onClick={() => navigate('/browse')} className="mb-6">
           ← Back
         </Button>
@@ -230,8 +230,8 @@ export default function OrderPage() {
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
+          <div className="lg:col-span-7 space-y-6">
             <Card>
               <CardHeader>
                 <h2 className="text-lg font-semibold text-slate-900">Buyer Information</h2>
@@ -383,15 +383,15 @@ export default function OrderPage() {
             </Card>
           </div>
 
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-5">
             <Card className="sticky top-4">
               <CardHeader>
                 <h2 className="text-lg font-semibold text-slate-900">Payment</h2>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex justify-between py-2 border-b border-slate-200">
+                <div className="flex justify-between items-baseline gap-4 py-2 border-b border-slate-200">
                   <span className="text-slate-600">Total</span>
-                  <span className="text-2xl font-bold text-slate-900">
+                  <span className="text-2xl font-bold text-slate-900 tabular-nums">
                     Br {parseFloat(String(order.total_amount_etb)).toFixed(2)}
                   </span>
                 </div>

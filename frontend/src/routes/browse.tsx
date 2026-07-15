@@ -35,12 +35,23 @@ interface Event {
   cover_image_url?: string
 }
 
+type TimeScope = 'upcoming' | 'past'
+
+function eventEndsAt(event: Event): Date {
+  return new Date(event.event_end || event.event_start)
+}
+
+function isPastEvent(event: Event): boolean {
+  return isPast(eventEndsAt(event))
+}
+
 export default function BrowsePage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const highlightEventId = searchParams.get('event')
   const [searchQuery, setSearchQuery] = useState('')
   const [cityFilter, setCityFilter] = useState('')
+  const [timeScope, setTimeScope] = useState<TimeScope>('upcoming')
   const [showEventDetail, setShowEventDetail] = useState(!!highlightEventId)
   const [registrationError, setRegistrationError] = useState('')
   const [registrationData, setRegistrationData] = useState({
@@ -150,17 +161,38 @@ export default function BrowsePage() {
 
   const events: Event[] = data || []
 
+  const { upcomingCount, pastCount } = useMemo(() => {
+    let upcoming = 0
+    let past = 0
+    for (const event of events) {
+      if (isPastEvent(event)) past += 1
+      else upcoming += 1
+    }
+    return { upcomingCount: upcoming, pastCount: past }
+  }, [events])
+
   const filteredEvents = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
-    return events.filter((event) => {
+    const filtered = events.filter((event) => {
+      const past = isPastEvent(event)
+      const matchesTime = timeScope === 'past' ? past : !past
       const matchesSearch =
         !q ||
         event.title.toLowerCase().includes(q) ||
-        (event.description || '').toLowerCase().includes(q)
-      const matchesCity = !cityFilter || event.city.toLowerCase() === cityFilter.toLowerCase()
-      return matchesSearch && matchesCity
+        (event.description || '').toLowerCase().includes(q) ||
+        (event.venue || '').toLowerCase().includes(q)
+      const matchesCity =
+        !cityFilter || event.city.toLowerCase() === cityFilter.toLowerCase()
+      return matchesTime && matchesSearch && matchesCity
     })
-  }, [events, searchQuery, cityFilter])
+
+    return filtered.sort((a, b) => {
+      const aTime = new Date(a.event_start).getTime()
+      const bTime = new Date(b.event_start).getTime()
+      // Upcoming: soonest first. Past: most recent first.
+      return timeScope === 'upcoming' ? aTime - bTime : bTime - aTime
+    })
+  }, [events, searchQuery, cityFilter, timeScope])
 
   const cities = Array.from(new Set(events.map((e) => e.city).filter(Boolean))).sort()
 
@@ -263,7 +295,10 @@ export default function BrowsePage() {
         <BrowseGridView
           isLoading={isLoading}
           events={filteredEvents}
-          totalCount={events.length}
+          timeScope={timeScope}
+          setTimeScope={setTimeScope}
+          upcomingCount={upcomingCount}
+          pastCount={pastCount}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
           cityFilter={cityFilter}
@@ -291,7 +326,10 @@ export default function BrowsePage() {
 function BrowseGridView(props: {
   isLoading: boolean
   events: Event[]
-  totalCount: number
+  timeScope: TimeScope
+  setTimeScope: (v: TimeScope) => void
+  upcomingCount: number
+  pastCount: number
   searchQuery: string
   setSearchQuery: (v: string) => void
   cityFilter: string
@@ -303,7 +341,10 @@ function BrowseGridView(props: {
   const {
     isLoading,
     events,
-    totalCount,
+    timeScope,
+    setTimeScope,
+    upcomingCount,
+    pastCount,
     searchQuery,
     setSearchQuery,
     cityFilter,
@@ -314,151 +355,231 @@ function BrowseGridView(props: {
   } = props
 
   const hasFilters = !!searchQuery || !!cityFilter
+  const scopeTotal = timeScope === 'upcoming' ? upcomingCount : pastCount
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="font-display text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight mb-2">
-          What&apos;s on this week
-        </h1>
-        <p className="text-slate-600 max-w-xl">
-          Concerts, conferences, fundraisers, art shows — anything someone in
-          Ethiopia is putting on. Pick one, get a ticket, show up.
-        </p>
-      </div>
+    <div className="min-h-[calc(100vh-3.5rem)] bg-white">
+      {/* Page header */}
+      <div className="border-b border-slate-200 bg-slate-50/80">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 sm:pt-14 pb-8">
+          <p className="font-display text-brand-600 text-xs font-bold tracking-[0.24em] uppercase mb-3">
+            EventFlow · Ethiopia
+          </p>
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
+            <div className="max-w-xl">
+              <h1 className="font-display text-3xl sm:text-4xl md:text-[2.75rem] font-bold text-slate-900 tracking-tight leading-tight">
+                Browse events
+              </h1>
+              <p className="mt-2 text-slate-500 leading-relaxed">
+                {timeScope === 'upcoming'
+                  ? 'Nights still ahead — pick one, get a ticket, show up.'
+                  : 'What already happened. Browse the archive.'}
+              </p>
+            </div>
 
-      {/* Search & Filters */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-2 mb-8 flex flex-col sm:flex-row gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-          <input
-            type="text"
-            placeholder="Search by event or description"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-transparent bg-slate-50 focus:bg-white focus:border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20 placeholder:text-slate-400"
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100"
-              aria-label="Clear search"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-
-        <select
-          value={cityFilter}
-          onChange={(e) => setCityFilter(e.target.value)}
-          className="px-4 py-2.5 text-sm rounded-xl border border-transparent bg-slate-50 focus:bg-white focus:border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20 text-slate-700 min-w-[160px]"
-        >
-          <option value="">All cities</option>
-          {cities.map((city) => (
-            <option key={city} value={city}>
-              {city}
-            </option>
-          ))}
-        </select>
-
-        {hasFilters && (
-          <button
-            type="button"
-            onClick={onClearFilters}
-            className="px-4 py-2.5 text-sm font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition"
-          >
-            Clear
-          </button>
-        )}
-      </div>
-
-      {/* Result count */}
-      {!isLoading && totalCount > 0 && (
-        <p className="text-sm text-slate-500 mb-5">
-          {events.length === totalCount
-            ? `${totalCount} ${totalCount === 1 ? 'event' : 'events'}`
-            : `${events.length} of ${totalCount} ${totalCount === 1 ? 'event' : 'events'}`}
-        </p>
-      )}
-
-      {/* Loading skeletons */}
-      {isLoading && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {Array.from({ length: 6 }).map((_, i) => (
+            {/* Upcoming / Past toggle */}
             <div
-              key={i}
-              className="bg-white border border-slate-200 rounded-2xl overflow-hidden"
+              role="tablist"
+              aria-label="Event time"
+              className="inline-flex p-1 rounded-xl bg-white border border-slate-200 shadow-sm self-start"
             >
-              <div className="h-44 bg-slate-100 animate-pulse" />
-              <div className="p-5 space-y-3">
-                <div className="h-5 bg-slate-100 rounded animate-pulse w-3/4" />
-                <div className="h-4 bg-slate-100 rounded animate-pulse w-full" />
-                <div className="h-4 bg-slate-100 rounded animate-pulse w-2/3" />
-                <div className="pt-2 flex gap-3">
-                  <div className="h-4 bg-slate-100 rounded animate-pulse w-24" />
-                  <div className="h-4 bg-slate-100 rounded animate-pulse w-20" />
+              {(
+                [
+                  { id: 'upcoming' as const, label: 'Upcoming', count: upcomingCount },
+                  { id: 'past' as const, label: 'Past', count: pastCount },
+                ] as const
+              ).map((tab) => {
+                const active = timeScope === tab.id
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setTimeScope(tab.id)}
+                    className={[
+                      'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
+                      active
+                        ? 'bg-brand-600 text-white shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50',
+                    ].join(' ')}
+                  >
+                    {tab.label}
+                    {!isLoading && (
+                      <span
+                        className={[
+                          'min-w-[1.25rem] h-5 px-1.5 rounded-md text-xs font-semibold tabular-nums inline-flex items-center justify-center',
+                          active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600',
+                        ].join(' ')}
+                      >
+                        {tab.count}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Search & city */}
+          <div className="mt-8 flex flex-col sm:flex-row gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search by name, venue, or description"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-10 py-3 text-sm rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-400 placeholder:text-slate-400"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                  aria-label="Clear search"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            <select
+              value={cityFilter}
+              onChange={(e) => setCityFilter(e.target.value)}
+              className="px-4 py-3 text-sm rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-400 text-slate-700 min-w-[160px]"
+            >
+              <option value="">All cities</option>
+              {cities.map((city) => (
+                <option key={city} value={city}>
+                  {city}
+                </option>
+              ))}
+            </select>
+
+            {hasFilters && (
+              <button
+                type="button"
+                onClick={onClearFilters}
+                className="px-4 py-3 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-white border border-transparent hover:border-slate-200 rounded-xl transition"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
+     
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+        {!isLoading && scopeTotal > 0 && (
+          <p className="text-sm text-slate-500 mb-5">
+            {hasFilters
+              ? `${events.length} of ${scopeTotal} ${timeScope} ${scopeTotal === 1 ? 'event' : 'events'}`
+              : `${events.length} ${timeScope} ${events.length === 1 ? 'event' : 'events'}`}
+          </p>
+        )}
+
+        {isLoading && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div
+                key={i}
+                className="bg-white border border-slate-200 overflow-hidden"
+              >
+                <div className="h-48 bg-slate-100 animate-pulse" />
+                <div className="p-5 space-y-3">
+                  <div className="h-5 bg-slate-100 rounded animate-pulse w-3/4" />
+                  <div className="h-4 bg-slate-100 rounded animate-pulse w-full" />
+                  <div className="h-4 bg-slate-100 rounded animate-pulse w-2/3" />
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Empty state */}
-      {!isLoading && events.length === 0 && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-10 sm:p-14 text-center">
-          <div className="w-12 h-12 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center mx-auto mb-5">
-            <CalendarOff className="w-6 h-6" />
+            ))}
           </div>
-          {hasFilters ? (
-            <>
-              <h3 className="font-display text-lg font-semibold text-slate-900 mb-1">
-                Nothing matches that
-              </h3>
-              <p className="text-slate-600 mb-5 max-w-sm mx-auto">
-                Try a different city, or clear the search to see everything.
-              </p>
-              <Button variant="outline" onClick={onClearFilters}>
-                Clear filters
-              </Button>
-            </>
-          ) : (
-            <>
-              <h3 className="font-display text-lg font-semibold text-slate-900 mb-1">
-                No events on EventFlow yet
-              </h3>
-              <p className="text-slate-600 mb-5 max-w-sm mx-auto">
-                When someone publishes an event it&apos;ll show up here. Got
-                something coming up? It takes about ten minutes to put on.
-              </p>
-              <Button onClick={() => (window.location.href = '/events/create')}>
-                Create an event
-              </Button>
-            </>
-          )}
-        </div>
-      )}
+        )}
 
-      {/* Events Grid */}
-      {!isLoading && events.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {events.map((event) => (
-            <EventCard
-              key={event.id}
-              event={event}
-              onOpen={() => onOpenEvent(event.id)}
-            />
-          ))}
-        </div>
-      )}
+        {!isLoading && events.length === 0 && (
+          <div className="border border-slate-200 bg-slate-50/50 px-6 py-16 sm:py-20 text-center">
+            <div className="w-12 h-12 bg-white border border-slate-200 text-slate-500 flex items-center justify-center mx-auto mb-5">
+              <CalendarOff className="w-6 h-6" />
+            </div>
+            {hasFilters ? (
+              <>
+                <h3 className="font-display text-lg font-semibold text-slate-900 mb-1">
+                  Nothing matches that
+                </h3>
+                <p className="text-slate-500 mb-5 max-w-sm mx-auto">
+                  Try another city, or clear search to see all {timeScope} events.
+                </p>
+                <Button variant="outline" onClick={onClearFilters}>
+                  Clear filters
+                </Button>
+              </>
+            ) : timeScope === 'upcoming' ? (
+              <>
+                <h3 className="font-display text-lg font-semibold text-slate-900 mb-1">
+                  No upcoming events
+                </h3>
+                <p className="text-slate-500 mb-5 max-w-sm mx-auto">
+                  {pastCount > 0
+                    ? 'Nothing on the calendar right now. Check past events, or host your own.'
+                    : 'When someone publishes an event, it shows up here.'}
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  {pastCount > 0 && (
+                    <Button variant="outline" onClick={() => setTimeScope('past')}>
+                      View past events
+                    </Button>
+                  )}
+                  <Button onClick={() => (window.location.href = '/events/create')}>
+                    Host an event
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 className="font-display text-lg font-semibold text-slate-900 mb-1">
+                  No past events yet
+                </h3>
+                <p className="text-slate-500 mb-5 max-w-sm mx-auto">
+                  Once nights wrap up, they land here.
+                </p>
+                {upcomingCount > 0 && (
+                  <Button variant="outline" onClick={() => setTimeScope('upcoming')}>
+                    View upcoming
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {!isLoading && events.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-slate-200 border border-slate-200">
+            {events.map((event) => (
+              <EventCard
+                key={event.id}
+                event={event}
+                isPast={timeScope === 'past'}
+                onOpen={() => onOpenEvent(event.id)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
 
-function EventCard({ event, onOpen }: { event: Event; onOpen: () => void }) {
+function EventCard({
+  event,
+  isPast: past,
+  onOpen,
+}: {
+  event: Event
+  isPast: boolean
+  onOpen: () => void
+}) {
   const start = new Date(event.event_start)
   const inFuture = isFuture(start)
   const daysAway = inFuture ? differenceInDays(start, new Date()) : 0
@@ -467,31 +588,61 @@ function EventCard({ event, onOpen }: { event: Event; onOpen: () => void }) {
     <button
       type="button"
       onClick={onOpen}
-      className="group text-left bg-white border border-slate-200 rounded-2xl overflow-hidden hover:border-slate-300 hover:shadow-card transition-all flex flex-col"
+      className={[
+        'group text-left bg-white overflow-hidden transition-colors flex flex-col h-full',
+        'hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500',
+        past ? 'opacity-90' : '',
+      ].join(' ')}
     >
       {event.cover_image_url ? (
-        <div className="w-full h-44 bg-slate-100 overflow-hidden">
+        <div className="relative w-full h-48 bg-slate-100 overflow-hidden">
           <img
             src={event.cover_image_url}
             alt={event.title}
-            className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+            className={[
+              'w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]',
+              past ? 'grayscale-[30%]' : '',
+            ].join(' ')}
           />
+          {past && (
+            <span className="absolute top-3 left-3 text-[11px] font-semibold uppercase tracking-wider bg-slate-900/75 text-white px-2 py-1">
+              Ended
+            </span>
+          )}
         </div>
       ) : (
-        <div className="w-full h-44 bg-gradient-to-br from-brand-100 via-brand-50 to-slate-50 flex items-center justify-center">
-          <Calendar className="w-8 h-8 text-brand-600/40" />
+        <div
+          className={[
+            'relative w-full h-48 flex items-center justify-center',
+            past
+              ? 'bg-slate-100'
+              : 'bg-gradient-to-br from-brand-100 via-brand-50 to-slate-50',
+          ].join(' ')}
+        >
+          <Calendar
+            className={['w-8 h-8', past ? 'text-slate-300' : 'text-brand-600/35'].join(' ')}
+          />
+          {past && (
+            <span className="absolute top-3 left-3 text-[11px] font-semibold uppercase tracking-wider bg-slate-800 text-white px-2 py-1">
+              Ended
+            </span>
+          )}
         </div>
       )}
 
       <div className="p-5 flex-1 flex flex-col">
-        <div className="flex items-center gap-2 text-xs text-slate-500 mb-2">
-          {inFuture && daysAway <= 14 ? (
-            <span className="inline-flex items-center gap-1 text-brand-700 font-medium">
+        <div className="flex items-center gap-2 text-xs text-slate-500 mb-2.5">
+          {!past && inFuture && daysAway <= 14 ? (
+            <span className="inline-flex items-center gap-1 text-brand-700 font-semibold">
               <Clock className="w-3.5 h-3.5" />
-              {daysAway === 0 ? 'Today' : daysAway === 1 ? 'Tomorrow' : `In ${daysAway} days`}
+              {daysAway === 0
+                ? 'Today'
+                : daysAway === 1
+                  ? 'Tomorrow'
+                  : `In ${daysAway} days`}
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1">
+            <span className="inline-flex items-center gap-1 font-medium">
               <Calendar className="w-3.5 h-3.5" />
               {format(start, 'EEE, MMM d')}
             </span>
@@ -500,12 +651,12 @@ function EventCard({ event, onOpen }: { event: Event; onOpen: () => void }) {
           <span>{format(start, 'h:mm a')}</span>
         </div>
 
-        <h3 className="font-display text-lg font-semibold text-slate-900 mb-1.5 line-clamp-2 group-hover:text-brand-700 transition-colors">
+        <h3 className="font-display text-lg font-semibold text-slate-900 mb-1.5 line-clamp-2 group-hover:text-brand-700 transition-colors tracking-tight">
           {event.title}
         </h3>
 
         {event.description && (
-          <p className="text-sm text-slate-600 line-clamp-2 mb-4">
+          <p className="text-sm text-slate-500 line-clamp-2 mb-4 leading-relaxed">
             {event.description}
           </p>
         )}
@@ -527,7 +678,7 @@ function EventCard({ event, onOpen }: { event: Event; onOpen: () => void }) {
    -------------------------------------------------------------------------- */
 
 function EventDetailView(props: {
-  detailScrollRef: React.RefObject<HTMLDivElement>
+  detailScrollRef: React.Ref<HTMLDivElement>
   scrollProgress: number
   event: any
   availability: any
@@ -567,6 +718,7 @@ function EventDetailView(props: {
   const eventEnd = event.event_end ? new Date(event.event_end) : null
   const isUpcoming = isFuture(eventStart)
   const isOngoing = !isUpcoming && eventEnd ? !isPast(eventEnd) : false
+  const hasEnded = !isUpcoming && !isOngoing
   const daysUntil = isUpcoming ? differenceInDays(eventStart, new Date()) : 0
 
   const ticketTypes: any[] = availability?.ticket_types || []
@@ -580,223 +732,194 @@ function EventDetailView(props: {
     0
   )
 
+  const lowestPrice =
+    ticketTypes.length > 0
+      ? Math.min(...ticketTypes.map((t) => Number(t.price_etb) || 0))
+      : null
+
   const subtotal =
     selectedTicket && selectedTicket.on_sale
       ? Number(selectedTicket.price_etb) * quantity
       : 0
 
-  const statusPill = (() => {
-    if (allSoldOut) return { label: 'Sold Out', tone: 'slate' as const }
-    if (!isUpcoming && !isOngoing) return { label: 'Event Ended', tone: 'slate' as const }
-    if (isOngoing) return { label: 'Happening now', tone: 'brand' as const }
-    if (daysUntil === 0) return { label: 'Today', tone: 'amber' as const }
-    if (daysUntil <= 7) return { label: `In ${daysUntil} days`, tone: 'amber' as const }
-    return { label: 'On sale', tone: 'brand' as const }
+  const statusLabel = (() => {
+    if (allSoldOut) return 'Sold out'
+    if (hasEnded) return 'Ended'
+    if (isOngoing) return 'Happening now'
+    if (daysUntil === 0) return 'Today'
+    if (daysUntil === 1) return 'Tomorrow'
+    if (daysUntil <= 7) return `In ${daysUntil} days`
+    if (hasOnSale) return 'On sale'
+    return 'Upcoming'
   })()
 
-  const pillStyles: Record<string, string> = {
-    brand: 'bg-brand-600 text-white',
-    amber: 'bg-amber-500 text-white',
-    slate: 'bg-slate-700 text-white',
-  }
+  const canBuy = hasOnSale && !hasEnded
 
   return (
-    <div ref={detailScrollRef} className="relative max-h-screen overflow-y-auto bg-slate-50/60">
-      {/* Reading progress bar */}
-      <div className="sticky top-0 z-30 h-1 bg-slate-200/60">
+    <div
+      ref={detailScrollRef}
+      className="relative max-h-[calc(100vh-3.5rem)] overflow-y-auto bg-white"
+    >
+      <div className="sticky top-0 z-30 h-1 bg-slate-100">
         <div
           className="h-full bg-brand-600 transition-[width] duration-150"
           style={{ width: `${Math.round(scrollProgress * 100)}%` }}
         />
       </div>
 
-      {/* HERO */}
-      <div className="relative">
-        {event.cover_image_url ? (
-          <div className="relative h-[360px] md:h-[440px] w-full overflow-hidden bg-slate-900">
-            <img
-              src={event.cover_image_url}
-              alt={event.title}
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/35 to-black/15" />
-          </div>
-        ) : (
-          <div className="relative h-[280px] md:h-[340px] w-full bg-gradient-to-br from-brand-600 via-brand-500 to-brand-400">
-            <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 30% 20%, white 1px, transparent 1px), radial-gradient(circle at 70% 60%, white 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
-          </div>
-        )}
-
-        {/* Top bar over hero */}
-        <div className="absolute top-0 left-0 right-0 z-10">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-            <button
-              onClick={onBack}
-              className="inline-flex items-center gap-2 rounded-full bg-white/90 backdrop-blur px-3.5 py-2 text-sm font-medium text-slate-800 shadow hover:bg-white transition"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Back
-            </button>
-
-            <button
-              onClick={handleCopyLink}
-              className="inline-flex items-center gap-2 rounded-full bg-white/90 backdrop-blur px-3.5 py-2 text-sm font-medium text-slate-800 shadow hover:bg-white transition"
-              aria-label="Copy event link"
-            >
-              {linkCopied ? (
-                <>
-                  <Check className="w-4 h-4 text-brand-600" />
-                  Copied
-                </>
-              ) : (
-                <>
-                  <Share2 className="w-4 h-4" />
-                  Share
-                </>
-              )}
-            </button>
-          </div>
+      {/* Cover — image only, no overlays */}
+      {event.cover_image_url ? (
+        <div className="relative w-full h-[42vh] min-h-[240px] max-h-[420px] bg-slate-900 overflow-hidden">
+          <img
+            src={event.cover_image_url}
+            alt=""
+            className="w-full h-full object-cover animate-[detailFade_0.7s_ease-out_both]"
+          />
         </div>
+      ) : (
+        <div className="w-full h-2 bg-brand-600" aria-hidden />
+      )}
 
-        {/* Title block over hero */}
-        <div className="absolute bottom-0 left-0 right-0 z-10">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pb-7 md:pb-9">
-            <div className="flex flex-wrap items-center gap-2 mb-3">
-              <span
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${pillStyles[statusPill.tone]}`}
-              >
-                {statusPill.label}
-              </span>
-              {event.city && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 backdrop-blur px-3 py-1 text-xs font-semibold text-white">
-                  <MapPin className="w-3 h-3" />
-                  {event.city}
-                </span>
-              )}
-            </div>
-
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white tracking-tight max-w-4xl">
-              {event.title}
-            </h1>
-
-            {isUpcoming && (
-              <p className="mt-3 text-white/85 text-sm md:text-base">
-                Starts {formatDistanceToNow(eventStart, { addSuffix: true })} ·{' '}
-                {format(eventStart, 'EEE, MMM d · h:mm a')}
-              </p>
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Toolbar */}
+        <div className="flex items-center justify-between py-4 border-b border-slate-100">
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            All events
+          </button>
+          <button
+            type="button"
+            onClick={handleCopyLink}
+            className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
+            aria-label="Copy event link"
+          >
+            {linkCopied ? (
+              <>
+                <Check className="w-4 h-4 text-brand-600" />
+                Link copied
+              </>
+            ) : (
+              <>
+                <Share2 className="w-4 h-4" />
+                Share
+              </>
             )}
-          </div>
+          </button>
         </div>
-      </div>
 
-      {/* BODY */}
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        {/* Quick facts strip */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
-          <FactCard
+        {/* Title block */}
+        <header className="pt-8 sm:pt-10 pb-8 sm:pb-10 border-b border-slate-200 animate-[detailFade_0.55s_ease-out_both]">
+          <p className="font-display text-brand-600 text-xs font-bold tracking-[0.22em] uppercase mb-4">
+            {statusLabel}
+            {event.city ? ` · ${event.city}` : ''}
+          </p>
+          <h1 className="font-display text-[clamp(2rem,5vw,3.5rem)] font-extrabold tracking-[-0.035em] leading-[1.05] text-slate-900 max-w-3xl">
+            {event.title}
+          </h1>
+          <p className="mt-4 text-base sm:text-lg text-slate-500 max-w-2xl leading-relaxed">
+            {isUpcoming
+              ? `Starts ${formatDistanceToNow(eventStart, { addSuffix: true })} · ${format(eventStart, 'EEEE, MMM d · h:mm a')}`
+              : isOngoing
+                ? `Started ${format(eventStart, 'EEE, MMM d · h:mm a')} — still going`
+                : `Was ${format(eventStart, 'EEEE, MMM d, yyyy · h:mm a')}`}
+          </p>
+        </header>
+
+        {/* Meta row */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-200 border-b border-slate-200 animate-[detailFade_0.65s_ease-out_both]">
+          <MetaCell
             icon={Calendar}
-            label="Date"
-            primary={format(eventStart, 'MMM d, yyyy')}
-            secondary={`${format(eventStart, 'h:mm a')}${
+            label="When"
+            value={format(eventStart, 'MMM d, yyyy')}
+            hint={`${format(eventStart, 'h:mm a')}${
               eventEnd ? ` – ${format(eventEnd, 'h:mm a')}` : ''
             }`}
           />
-          <FactCard
+          <MetaCell
             icon={MapPin}
-            label="Venue"
-            primary={event.venue || 'TBA'}
-            secondary={event.city || null}
+            label="Where"
+            value={event.venue || 'Venue TBA'}
+            hint={event.city || undefined}
           />
-          <FactCard
-            icon={Users}
-            label="Availability"
-            primary={
-              ticketTypes.length === 0
-                ? '—'
-                : `${totalRemaining} ticket${totalRemaining === 1 ? '' : 's'} left`
-            }
-            secondary={
-              ticketTypes.length > 0
-                ? `${ticketTypes.length} type${ticketTypes.length === 1 ? '' : 's'}`
-                : null
-            }
-          />
-          <FactCard
+          <MetaCell
             icon={TicketIcon}
-            label="From"
-            primary={
-              ticketTypes.length > 0
-                ? `Br ${Math.min(...ticketTypes.map((t) => Number(t.price_etb) || 0))}`
-                : '—'
+            label="Tickets"
+            value={
+              lowestPrice != null
+                ? `From Br ${lowestPrice.toFixed(0)}`
+                : hasEnded
+                  ? 'Closed'
+                  : 'Not listed yet'
             }
-            secondary="per ticket"
+            hint={
+              ticketTypes.length > 0
+                ? `${totalRemaining} left · ${ticketTypes.length} type${ticketTypes.length === 1 ? '' : 's'}`
+                : undefined
+            }
           />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* LEFT: About + Tickets */}
-          <div className="lg:col-span-2 space-y-8">
-            {/* About */}
-            <section className="bg-white border border-slate-200 rounded-2xl p-6">
-              <h2 className="font-display text-lg font-semibold text-slate-900 mb-3">
-                About this event
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 py-10 sm:py-14">
+          {/* Left column */}
+          <div className="lg:col-span-7 space-y-12 animate-[detailFade_0.7s_ease-out_both]">
+            <section>
+              <h2 className="font-display text-xl font-bold text-slate-900 tracking-tight mb-3">
+                About
               </h2>
               {event.description ? (
-                <p className="text-slate-700 whitespace-pre-wrap leading-relaxed">
+                <p className="text-slate-600 whitespace-pre-wrap leading-relaxed text-[15px] sm:text-base">
                   {event.description}
                 </p>
               ) : (
-                <p className="text-slate-500 italic">
+                <p className="text-slate-400">
                   The organizer hasn&apos;t added a description yet.
                 </p>
               )}
             </section>
 
-            {/* Tickets */}
-            <section className="bg-white border border-slate-200 rounded-2xl p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="font-display text-lg font-semibold text-slate-900">
-                  Choose your ticket
+            <section>
+              <div className="flex items-baseline justify-between gap-4 mb-4">
+                <h2 className="font-display text-xl font-bold text-slate-900 tracking-tight">
+                  Tickets
                 </h2>
                 {hasOnSale && (
-                  <span className="text-xs text-slate-500">
+                  <span className="text-xs text-slate-500 tabular-nums">
                     {ticketTypes.filter((t: any) => t.on_sale).length} on sale
                   </span>
                 )}
               </div>
 
               {ticketTypes.length === 0 ? (
-                <div className="text-center py-10">
-                  <div className="w-10 h-10 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center mx-auto mb-3">
-                    <TicketIcon className="w-5 h-5" />
-                  </div>
-                  <p className="text-slate-700 font-medium">No tickets on offer yet</p>
+                <div className="border border-slate-200 bg-slate-50/60 px-5 py-10 text-center">
+                  <TicketIcon className="w-6 h-6 text-slate-300 mx-auto mb-3" />
+                  <p className="font-medium text-slate-800">No tickets yet</p>
                   <p className="text-sm text-slate-500 mt-1">
-                    The organizer is still setting things up. Check back soon.
+                    The organizer is still setting things up.
                   </p>
                 </div>
               ) : (
-                <div className="space-y-2.5">
+                <div className="border border-slate-200 divide-y divide-slate-200">
                   {ticketTypes.map((ticket) => {
                     const isSelected = ticket.id === selectedTicketId
                     const isLow =
                       ticket.on_sale && ticket.remaining > 0 && ticket.remaining <= 10
-                    const isOff = !ticket.on_sale
+                    const isOff = !ticket.on_sale || hasEnded
                     return (
                       <label
                         key={ticket.id}
                         className={[
-                          'relative flex items-center gap-4 p-5 rounded-2xl border-2 cursor-pointer transition-all duration-300',
+                          'flex items-center gap-4 p-4 sm:p-5 cursor-pointer transition-colors',
                           isOff
-                            ? 'border-slate-100 bg-slate-50 cursor-not-allowed opacity-60'
+                            ? 'bg-slate-50/80 cursor-not-allowed opacity-60'
                             : isSelected
-                              ? 'border-brand-600 bg-gradient-to-br from-brand-50 to-white shadow-md shadow-brand-500/10 scale-[1.02]'
-                              : 'border-slate-200 hover:border-brand-300 hover:bg-slate-50 hover:shadow hover:-translate-y-0.5',
+                              ? 'bg-brand-50/70'
+                              : 'hover:bg-slate-50',
                         ].join(' ')}
                       >
-                        {isSelected && (
-                          <div className="absolute top-0 right-0 w-16 h-16 bg-brand-500/10 rounded-bl-full rounded-tr-2xl -z-10" />
-                        )}
                         <input
                           type="radio"
                           name="ticketType"
@@ -808,96 +931,109 @@ function EventDetailView(props: {
                         />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="font-medium text-slate-900">
+                            <h3 className="font-display font-semibold text-slate-900">
                               {ticket.name}
                             </h3>
                             {isLow && (
-                              <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700">
+                              <span className="text-xs font-medium text-amber-700">
                                 Only {ticket.remaining} left
                               </span>
                             )}
-                            {ticket.sold_out && (
-                              <span className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">
-                                Sold out
+                            {(ticket.sold_out || isOff) && (
+                              <span className="text-xs font-medium text-slate-500">
+                                {ticket.sold_out ? 'Sold out' : 'Unavailable'}
                               </span>
                             )}
                           </div>
-                          <div className="text-xs text-slate-500 mt-0.5">
+                          <p className="text-xs text-slate-500 mt-0.5">
                             {ticket.remaining} of{' '}
-                            {ticket.remaining + ticket.quantity_sold} available
+                            {ticket.remaining + ticket.quantity_sold} left
                             {ticket.max_per_order
-                              ? ` · max ${ticket.max_per_order} per order`
+                              ? ` · max ${ticket.max_per_order} each`
                               : ''}
-                          </div>
+                          </p>
                         </div>
-                        <div className="text-right flex-shrink-0">
-                          <div className="text-lg font-semibold text-slate-900 tabular-nums">
+                        <div className="text-right shrink-0">
+                          <div className="font-display text-lg font-bold text-slate-900 tabular-nums">
                             Br {Number(ticket.price_etb).toFixed(0)}
                           </div>
-                          <div className="text-xs text-slate-500">per ticket</div>
                         </div>
                       </label>
                     )
                   })}
                 </div>
               )}
-            </section>
 
-            <p className="text-xs text-slate-500 text-center">
-              Pay with Chapa · Telebirr · CBE Birr · cards. Tickets land in your
-              inbox the second payment clears.
-            </p>
+              <p className="mt-5 text-xs text-slate-400">
+                Pay with Chapa, Telebirr, CBE Birr, or card. Tickets email as soon
+                as payment clears.
+              </p>
+            </section>
           </div>
 
-          {/* RIGHT: register card */}
-          <div className="lg:col-span-1">
-            <div className="sticky top-24">
-              <div className="relative group">
-                <div className="absolute -inset-1 rounded-3xl bg-gradient-to-br from-brand-400 via-purple-400 to-pink-400 opacity-20 blur-xl transition duration-500 group-hover:opacity-30" />
-                <div className="relative bg-white/80 backdrop-blur-xl border border-white shadow-2xl rounded-3xl overflow-hidden">
-                  <div className="px-6 py-5 border-b border-white/50 bg-white/50">
-                    <h3 className="font-display text-lg font-bold text-slate-900 bg-clip-text text-transparent bg-gradient-to-r from-brand-600 to-purple-600">
-                      Reserve your spot
-                    </h3>
-                    <p className="text-xs text-slate-500 mt-1">
-                      We&apos;ll save your details and take you to payment.
+          {/* Checkout column */}
+          <div className="lg:col-span-5 animate-[detailFade_0.8s_ease-out_both]">
+            <div className="lg:sticky lg:top-8 border border-slate-200 bg-white">
+              <div className="h-1 bg-brand-600" aria-hidden />
+              <div className="px-5 sm:px-6 py-5 border-b border-slate-100">
+                <h3 className="font-display text-lg font-bold text-slate-900 tracking-tight">
+                  {canBuy ? 'Get tickets' : hasEnded ? 'This event ended' : 'Not on sale'}
+                </h3>
+                <p className="text-sm text-slate-500 mt-1">
+                  {canBuy
+                    ? 'Your details go with you to checkout.'
+                    : hasEnded
+                      ? 'Registration is closed for this night.'
+                      : 'Check back when tickets open.'}
+                </p>
+              </div>
+
+              <div className="p-5 sm:p-6">
+                {registrationError && (
+                  <Alert
+                    type="error"
+                    message={registrationError}
+                    onClose={() => setRegistrationError('')}
+                    className="mb-4"
+                  />
+                )}
+
+                {!canBuy ? (
+                  <div className="py-6 text-center">
+                    <Users className="w-7 h-7 text-slate-300 mx-auto mb-3" />
+                    <p className="text-sm text-slate-500">
+                      {hasEnded
+                        ? 'Browse other upcoming events instead.'
+                        : 'Tickets aren\'t available right now.'}
                     </p>
+                    {hasEnded && (
+                      <Button
+                        variant="outline"
+                        className="mt-5"
+                        onClick={onBack}
+                      >
+                        Browse events
+                      </Button>
+                    )}
                   </div>
-  
-                  <div className="p-6 bg-white/40">
-                  {registrationError && (
-                    <Alert
-                      type="error"
-                      message={registrationError}
-                      onClose={() => setRegistrationError('')}
-                      className="mb-4"
-                    />
-                  )}
-
-                  {!hasOnSale && ticketTypes.length > 0 && (
-                    <div className="mb-4 rounded-xl bg-amber-50 border border-amber-200/80 p-3 text-sm text-amber-800">
-                      Tickets aren&apos;t on sale right now. Check back later.
-                    </div>
-                  )}
-
+                ) : (
                   <form onSubmit={handleRegistration} className="space-y-4">
-                    {/* Quantity stepper */}
                     {selectedTicket && selectedTicket.on_sale && (
                       <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-2">
+                        <label className="block text-sm font-medium text-slate-700 mb-2">
                           Quantity
                         </label>
-                        <div className="flex items-center justify-between rounded-xl bg-white border-2 border-slate-100 p-1.5 shadow-sm">
+                        <div className="flex items-center justify-between border border-slate-200 p-1">
                           <button
                             type="button"
                             onClick={() => setQuantity((q) => Math.max(1, q - 1))}
                             disabled={quantity <= 1}
-                            className="w-10 h-10 inline-flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 active:bg-slate-200 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+                            className="w-10 h-10 inline-flex items-center justify-center text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-30"
                             aria-label="Decrease quantity"
                           >
                             <Minus className="w-4 h-4" />
                           </button>
-                          <span className="text-lg font-bold text-slate-900 tabular-nums w-12 text-center">
+                          <span className="font-display text-lg font-bold text-slate-900 tabular-nums w-12 text-center">
                             {quantity}
                           </span>
                           <button
@@ -920,7 +1056,7 @@ function EventDetailView(props: {
                                 selectedTicket.remaining
                               )
                             }
-                            className="w-10 h-10 inline-flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 active:bg-slate-200 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+                            className="w-10 h-10 inline-flex items-center justify-center text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-30"
                             aria-label="Increase quantity"
                           >
                             <Plus className="w-4 h-4" />
@@ -956,65 +1092,68 @@ function EventDetailView(props: {
                       required
                     />
 
-                    {/* Subtotal */}
                     {selectedTicket && selectedTicket.on_sale && (
-                      <div className="rounded-2xl bg-gradient-to-r from-slate-50 to-slate-100 border border-slate-200/60 p-4 flex items-center justify-between shadow-inner">
-                        <span className="text-sm font-medium text-slate-600">Subtotal</span>
-                        <span className="text-xl font-bold text-brand-600 tabular-nums">
+                      <div className="flex items-center justify-between py-3 border-y border-slate-100">
+                        <span className="text-sm text-slate-500">Subtotal</span>
+                        <span className="font-display text-xl font-bold text-brand-700 tabular-nums">
                           Br {subtotal.toFixed(0)}
                         </span>
                       </div>
                     )}
 
-                    <div className="pt-2">
-                      <Button
-                        type="submit"
-                        size="lg"
-                        fullWidth
-                        disabled={!hasOnSale || !selectedTicket}
-                        className="shadow-lg shadow-brand-500/25 hover:shadow-xl hover:shadow-brand-500/30 hover:-translate-y-0.5 transition-all duration-300 relative overflow-hidden group"
-                      >
-                        <div className="absolute inset-0 w-full h-full bg-white/20 -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-in-out" />
-                        {hasOnSale ? 'Continue to checkout' : 'Not on sale'}
-                      </Button>
-                    </div>
+                    <Button
+                      type="submit"
+                      size="lg"
+                      fullWidth
+                      disabled={!selectedTicket}
+                    >
+                      Continue to checkout
+                    </Button>
 
-                    <p className="text-xs text-slate-500 text-center">
+                    <p className="text-xs text-slate-400 text-center leading-relaxed">
                       By continuing you agree to receive event-related emails.
                     </p>
                   </form>
-                </div>
-              </div>
+                )}
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      <style>{`
+        @keyframes detailFade {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   )
 }
 
-function FactCard({
+function MetaCell({
   icon: Icon,
   label,
-  primary,
-  secondary,
+  value,
+  hint,
 }: {
   icon: React.ComponentType<{ className?: string }>
   label: string
-  primary: string
-  secondary: string | null
+  value: string
+  hint?: string
 }) {
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4">
-      <div className="flex items-center gap-2 text-xs font-medium text-slate-500 uppercase tracking-wide">
-        <Icon className="w-4 h-4 text-slate-400" />
-        {label}
+    <div className="flex items-start gap-3 py-5 sm:py-6 sm:px-5 first:sm:pl-0 last:sm:pr-0">
+      <Icon className="w-5 h-5 text-brand-600 mt-0.5 shrink-0" />
+      <div className="min-w-0">
+        <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">
+          {label}
+        </p>
+        <p className="mt-1 font-display font-semibold text-slate-900 truncate">
+          {value}
+        </p>
+        {hint && <p className="text-sm text-slate-500 truncate">{hint}</p>}
       </div>
-      <div className="mt-1.5 text-sm font-semibold text-slate-900 truncate">
-        {primary}
-      </div>
-      {secondary && <div className="text-xs text-slate-500">{secondary}</div>}
     </div>
   )
 }

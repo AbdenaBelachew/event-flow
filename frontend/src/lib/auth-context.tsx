@@ -3,7 +3,7 @@ import { clearAppCache } from './queryClient'
 
 export interface User {
   id: string
-  company_id: string
+  company_id: string | null
   full_name: string
   email: string
   role: 'super_admin' | 'company_admin' | 'event_staff'

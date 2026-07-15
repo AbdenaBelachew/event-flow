@@ -1,8 +1,12 @@
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { eventsAPI } from '../lib/api'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { eventsAPI, staffAPI } from '../lib/api'
+import { useAuth } from '../lib/auth-context'
 import Card, { CardContent, CardHeader } from '../components/Card'
 import Button from '../components/Button'
+import Input from '../components/Input'
+import Modal from '../components/Modal'
+import Alert from '../components/Alert'
 import {
   Calendar,
   MapPin,
@@ -20,16 +24,39 @@ import {
   CalendarOff,
   RefreshCw,
   Shield,
+  UserPlus,
+  Trash2,
 } from 'lucide-react'
 import { format, formatDistanceToNow, isFuture, isPast, differenceInDays } from 'date-fns'
 import { useMemo, useState, useEffect } from 'react'
 import { buildEventShareLink } from '../lib/slug'
-import { useRequireEventOwner } from '../lib/event-access'
+import {
+  useRequireEventOwner,
+  canEditEvent,
+  isDoorChecker,
+  staffHomePath,
+} from '../lib/event-access'
 
 export default function EventDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const { user } = useAuth()
   const [copySuccess, setCopySuccess] = useState(false)
+  const [staffModalOpen, setStaffModalOpen] = useState(false)
+  const [staffForm, setStaffForm] = useState({
+    full_name: '',
+    email: '',
+    password: '',
+  })
+  const [staffError, setStaffError] = useState('')
+  const [staffSuccess, setStaffSuccess] = useState('')
+  const [createdStaffLink, setCreatedStaffLink] = useState('')
+  const [linkCopied, setLinkCopied] = useState(false)
+
+  const isChecker = isDoorChecker(user)
+  const canCreateStaff =
+    user?.role === 'company_admin' || user?.role === 'super_admin'
 
   const { data: event, isLoading, isError, refetch } = useQuery({
     queryKey: ['events', id],
@@ -37,11 +64,53 @@ export default function EventDetailPage() {
   })
 
   const isOwner = useRequireEventOwner(event, isLoading)
-  if (event && !isOwner) return null
+  const canManageStaff = canEditEvent(user, event)
 
   const { data: availability } = useQuery({
     queryKey: ['events', id, 'availability'],
     queryFn: () => eventsAPI.getAvailability(id!).then((res) => res.data),
+    enabled: !!id && !!event,
+  })
+
+  const { data: staffList = [], isLoading: staffLoading } = useQuery({
+    queryKey: ['events', id, 'staff'],
+    queryFn: () => staffAPI.listByEvent(id!).then((res) => res.data.staff),
+    enabled: !!id && canCreateStaff && !!event,
+  })
+
+  const scannerPath = id ? `/events/${id}/scanner` : ''
+  const scannerAbsoluteUrl =
+    typeof window !== 'undefined' && scannerPath
+      ? `${window.location.origin}${scannerPath}`
+      : scannerPath
+
+  const createStaffMutation = useMutation({
+    mutationFn: (data: { full_name: string; email: string; password: string }) =>
+      staffAPI.create(id!, data),
+    onSuccess: (_res, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['events', id, 'staff'] })
+      setCreatedStaffLink(scannerAbsoluteUrl)
+      setStaffSuccess(
+        `Door checker created for ${vars.email}. Share the login and this event scanner link with them.`
+      )
+      setStaffError('')
+      setStaffForm({ full_name: '', email: '', password: '' })
+      setStaffModalOpen(false)
+    },
+    onError: (err: any) => {
+      setStaffError(
+        err?.response?.data?.message || err?.message || 'Could not create door checker'
+      )
+      setStaffSuccess('')
+      setCreatedStaffLink('')
+    },
+  })
+
+  const removeStaffMutation = useMutation({
+    mutationFn: (userId: string) => staffAPI.remove(id!, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['events', id, 'staff'] })
+    },
   })
 
   // Build a human-readable share link once the event is loaded.
@@ -87,6 +156,36 @@ export default function EventDetailPage() {
     const t = setTimeout(() => setCopySuccess(false), 2000)
     return () => clearTimeout(t)
   }, [copySuccess])
+
+  useEffect(() => {
+    if (!staffSuccess) return
+    const t = setTimeout(() => setStaffSuccess(''), 4000)
+    return () => clearTimeout(t)
+  }, [staffSuccess])
+
+  const openStaffModal = () => {
+    setStaffError('')
+    setStaffForm({ full_name: '', email: '', password: '' })
+    setStaffModalOpen(true)
+  }
+
+  const handleCreateStaff = (e: React.FormEvent) => {
+    e.preventDefault()
+    setStaffError('')
+    if (!staffForm.full_name.trim() || !staffForm.email.trim() || !staffForm.password) {
+      setStaffError('Name, email, and password are required')
+      return
+    }
+    if (staffForm.password.length < 8) {
+      setStaffError('Password must be at least 8 characters')
+      return
+    }
+    createStaffMutation.mutate({
+      full_name: staffForm.full_name.trim(),
+      email: staffForm.email.trim(),
+      password: staffForm.password,
+    })
+  }
 
   // ---- derived status pill ----
   const statusPill = useMemo(() => {
@@ -149,6 +248,8 @@ export default function EventDetailPage() {
     }
     return null
   }, [event, availability, timing])
+
+  if (event && !isOwner) return null
 
   // ---- loading state ----
   if (isLoading) {
@@ -269,14 +370,18 @@ export default function EventDetailPage() {
         <div className="absolute top-0 left-0 right-0 z-10">
           <div className="max-w-6xl mx-auto px-3 xs:px-4 sm:px-5 md:px-6 lg:px-8 py-3 xs:py-3.5 sm:py-4 flex items-center justify-between gap-2 xs:gap-2.5 sm:gap-3">
             <button
-              onClick={() => navigate('/dashboard')}
+              onClick={() =>
+                navigate(isChecker ? staffHomePath(user) || scannerPath : '/dashboard')
+              }
               className="inline-flex items-center gap-1.5 xs:gap-2 rounded-full bg-white/90 backdrop-blur-sm xs:backdrop-blur px-2.5 xs:px-3 sm:px-3.5 py-2 xs:py-2.5 sm:py-2.5 text-xs xs:text-[13px] sm:text-sm font-medium text-gray-800 shadow-sm xs:shadow hover:bg-white hover:shadow-md transition-all duration-200 min-h-[38px] xs:min-h-[40px] sm:min-h-[44px] active:scale-95"
-              aria-label="Back to Dashboard"
+              aria-label={isChecker ? 'Back to scanner' : 'Back to Dashboard'}
             >
               <ArrowLeft className="w-3.5 h-3.5 xs:w-4 xs:h-4 sm:w-4.5 sm:h-4.5" />
               <span className="hidden xs:inline xs:mr-0.5">Back to</span>
               <span className="inline xs:hidden">Back</span>
-              <span className="hidden sm:inline ml-0.5">Dashboard</span>
+              <span className="hidden sm:inline ml-0.5">
+                {isChecker ? 'Scanner' : 'Dashboard'}
+              </span>
             </button>
 
             <button
@@ -514,7 +619,7 @@ export default function EventDetailPage() {
             </Card>
 
             {/* Share link */}
-            {isPublished && (
+            {isPublished && canManageStaff && (
               <Card className="border-2 border-brand-200 bg-brand-50/60">
                 <CardHeader className="pb-3">
                   <div className="flex items-center gap-2">
@@ -556,7 +661,134 @@ export default function EventDetailPage() {
               </Card>
             )}
 
-        
+            {/* Door checkers — company admin only */}
+            {canManageStaff && (
+              <Card>
+                <CardHeader>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <Shield className="w-5 h-5 text-brand-600" />
+                      <div>
+                        <h2 className="text-xl font-bold text-gray-900">Door checkers</h2>
+                        <p className="text-sm text-gray-500 mt-0.5">
+                          Staff who can only scan tickets for this event.
+                        </p>
+                      </div>
+                    </div>
+                    <Button onClick={openStaffModal} size="sm">
+                      <UserPlus className="w-4 h-4 mr-1.5" />
+                      Create door checker
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                      Checker login goes to
+                    </p>
+                    <code className="text-xs sm:text-sm text-slate-800 break-all">
+                      {scannerAbsoluteUrl}
+                    </code>
+                  </div>
+                  {staffSuccess && (
+                    <div className="mb-4 space-y-3">
+                      <Alert
+                        type="success"
+                        message={staffSuccess}
+                        onClose={() => {
+                          setStaffSuccess('')
+                          setCreatedStaffLink('')
+                        }}
+                      />
+                      {createdStaffLink && (
+                        <div className="rounded-xl border border-brand-200 bg-brand-50/50 p-3">
+                          <p className="text-xs font-semibold text-brand-800 uppercase tracking-wide mb-2">
+                            Their event link (scanner)
+                          </p>
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <code className="flex-1 text-xs sm:text-sm text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-2 truncate">
+                              {createdStaffLink}
+                            </code>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={async () => {
+                                try {
+                                  await navigator.clipboard.writeText(createdStaffLink)
+                                  setLinkCopied(true)
+                                  setTimeout(() => setLinkCopied(false), 2000)
+                                } catch {
+                                  /* ignore */
+                                }
+                              }}
+                            >
+                              {linkCopied ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 mr-1" />
+                                  Copied
+                                </>
+                              ) : (
+                                'Copy link'
+                              )}
+                            </Button>
+                          </div>
+                          <p className="text-xs text-slate-500 mt-2">
+                            After login they open this page only — they cannot create events.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {staffLoading ? (
+                    <p className="text-sm text-gray-500 py-4">Loading staff…</p>
+                  ) : staffList.length === 0 ? (
+                    <div className="text-center py-8 border border-dashed border-gray-200 rounded-xl">
+                      <Shield className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                      <p className="text-sm font-medium text-gray-800">No door checkers yet</p>
+                      <p className="text-xs text-gray-500 mt-1 max-w-xs mx-auto">
+                        Create a login for someone at the door. They can only check in tickets for this event.
+                      </p>
+                      <Button className="mt-4" variant="outline" onClick={openStaffModal}>
+                        <UserPlus className="w-4 h-4 mr-1.5" />
+                        Create door checker
+                      </Button>
+                    </div>
+                  ) : (
+                    <ul className="divide-y divide-gray-100 border border-gray-200 rounded-xl overflow-hidden">
+                      {staffList.map((s: any) => (
+                        <li
+                          key={s.id}
+                          className="flex items-center justify-between gap-3 px-4 py-3 bg-white"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-medium text-gray-900 truncate">{s.full_name}</p>
+                            <p className="text-sm text-gray-500 truncate">{s.email}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  `Remove ${s.full_name}? They will no longer be able to check tickets.`
+                                )
+                              ) {
+                                removeStaffMutation.mutate(s.id)
+                              }
+                            }}
+                            disabled={removeStaffMutation.isPending}
+                            className="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition shrink-0"
+                            aria-label={`Remove ${s.full_name}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* RIGHT: sticky action card */}
@@ -566,77 +798,109 @@ export default function EventDetailPage() {
               <Card className="shadow-lg overflow-hidden">
                 <CardHeader className="bg-gradient-to-r from-brand-600 to-brand-600 text-white border-b-0">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-bold">Event actions</h3>
-                    <Ticket className="w-5 h-5 text-white/80" />
+                    <h3 className="text-lg font-bold">
+                      {isChecker ? 'Door check-in' : 'Event actions'}
+                    </h3>
+                    {isChecker ? (
+                      <ScanLine className="w-5 h-5 text-white/80" />
+                    ) : (
+                      <Ticket className="w-5 h-5 text-white/80" />
+                    )}
                   </div>
                   <p className="text-xs text-white/85 mt-1">
-                    Manage your event or open sales to the public.
+                    {isChecker
+                      ? 'Scan tickets for this event only.'
+                      : 'Manage your event or open sales to the public.'}
                   </p>
                 </CardHeader>
                 <CardContent className="pt-5 space-y-2.5">
-                  {isPublished && hasOnSale && !allSoldOut && (
-                    <Button
-                      size="lg"
-                      fullWidth
-                      onClick={() => navigate(`/events/${event.id}/checkout`)}
-                      className="bg-gradient-to-r from-brand-600 to-brand-600 hover:from-brand-700 hover:to-brand-700 text-white font-semibold shadow-md"
-                    >
-                      <Ticket className="w-4 h-4 mr-2" />
-                      Buy Tickets
-                    </Button>
+                  {isChecker ? (
+                    <>
+                      <Button
+                        size="lg"
+                        fullWidth
+                        onClick={() => navigate(scannerPath)}
+                        className="bg-gradient-to-r from-brand-600 to-brand-600 hover:from-brand-700 hover:to-brand-700 text-white font-semibold shadow-md"
+                      >
+                        <ScanLine className="w-4 h-4 mr-2" />
+                        Open Scanner
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        fullWidth
+                        onClick={() => navigate(`/events/${event.id}/stats`)}
+                      >
+                        <TrendingUp className="w-4 h-4 mr-2" />
+                        View Stats
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      {isPublished && hasOnSale && !allSoldOut && (
+                        <Button
+                          size="lg"
+                          fullWidth
+                          onClick={() => navigate(`/events/${event.id}/checkout`)}
+                          className="bg-gradient-to-r from-brand-600 to-brand-600 hover:from-brand-700 hover:to-brand-700 text-white font-semibold shadow-md"
+                        >
+                          <Ticket className="w-4 h-4 mr-2" />
+                          Buy Tickets
+                        </Button>
+                      )}
+
+                      {isPublished && allSoldOut && (
+                        <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700 flex items-start gap-2">
+                          <CalendarOff className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                          <span>All tickets for this event are sold out.</span>
+                        </div>
+                      )}
+
+                      {event.status === 'draft' && (
+                        <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800 flex items-start gap-2">
+                          <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                          <span>
+                            This event is a draft. Publish it from the edit page to start selling
+                            tickets.
+                          </span>
+                        </div>
+                      )}
+
+                      <Button
+                        variant="secondary"
+                        fullWidth
+                        onClick={() => navigate(`/events/${event.id}/edit`)}
+                      >
+                        <Edit3 className="w-4 h-4 mr-2" />
+                        Edit Event
+                      </Button>
+
+                      <Button
+                        variant="secondary"
+                        fullWidth
+                        onClick={() => navigate(`/events/${event.id}/stats`)}
+                      >
+                        <TrendingUp className="w-4 h-4 mr-2" />
+                        View Stats
+                      </Button>
+
+                      <Button
+                        variant="secondary"
+                        fullWidth
+                        onClick={() => navigate(scannerPath)}
+                      >
+                        <ScanLine className="w-4 h-4 mr-2" />
+                        Open Scanner
+                      </Button>
+
+                      <Button
+                        variant="secondary"
+                        fullWidth
+                        onClick={() => navigate(`/events/${event.id}/payments`)}
+                      >
+                        Approve payments
+                      </Button>
+                    </>
                   )}
-
-                  {isPublished && allSoldOut && (
-                    <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700 flex items-start gap-2">
-                      <CalendarOff className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                      <span>All tickets for this event are sold out.</span>
-                    </div>
-                  )}
-
-                  {event.status === 'draft' && (
-                    <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800 flex items-start gap-2">
-                      <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                      <span>
-                        This event is a draft. Publish it from the edit page to start selling
-                        tickets.
-                      </span>
-                    </div>
-                  )}
-
-                  <Button
-                    variant="secondary"
-                    fullWidth
-                    onClick={() => navigate(`/events/${event.id}/edit`)}
-                  >
-                    <Edit3 className="w-4 h-4 mr-2" />
-                    Edit Event
-                  </Button>
-
-                  <Button
-                    variant="secondary"
-                    fullWidth
-                    onClick={() => navigate(`/events/${event.id}/stats`)}
-                  >
-                    <TrendingUp className="w-4 h-4 mr-2" />
-                    View Stats
-                  </Button>
-
-                  <Button
-                    variant="secondary"
-                    fullWidth
-                    onClick={() => navigate(`/events/${event.id}/scanner`)}
-                  >
-                    <ScanLine className="w-4 h-4 mr-2" />
-                    Open Scanner
-                  </Button>
-
-                  <Button
-                    variant="secondary"
-                    fullWidth
-                    onClick={() => navigate(`/events/${event.id}/payments`)}
-                  >
-                    Approve payments
-                  </Button>
                 </CardContent>
               </Card>
 
@@ -676,6 +940,76 @@ export default function EventDetailPage() {
           </div>
         </div>
       </div>
+
+      <Modal
+        isOpen={staffModalOpen}
+        onClose={() => {
+          if (!createStaffMutation.isPending) setStaffModalOpen(false)
+        }}
+        title="Create door checker"
+        description="This person can only check in tickets for this event. After login they go straight to the scanner — they cannot create events."
+        footer={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => setStaffModalOpen(false)}
+              disabled={createStaffMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="create-door-staff-form"
+              isLoading={createStaffMutation.isPending}
+            >
+              Create account
+            </Button>
+          </>
+        }
+      >
+        <form id="create-door-staff-form" onSubmit={handleCreateStaff} className="space-y-4">
+          {staffError && (
+            <Alert
+              type="error"
+              message={staffError}
+              onClose={() => setStaffError('')}
+            />
+          )}
+          <Input
+            label="Full name"
+            required
+            value={staffForm.full_name}
+            onChange={(e) =>
+              setStaffForm((f) => ({ ...f, full_name: e.target.value }))
+            }
+            placeholder="e.g. Gate staff"
+            autoComplete="name"
+          />
+          <Input
+            label="Email"
+            type="email"
+            required
+            value={staffForm.email}
+            onChange={(e) =>
+              setStaffForm((f) => ({ ...f, email: e.target.value }))
+            }
+            placeholder="checker@example.com"
+            autoComplete="off"
+          />
+          <Input
+            label="Password"
+            type="password"
+            required
+            value={staffForm.password}
+            onChange={(e) =>
+              setStaffForm((f) => ({ ...f, password: e.target.value }))
+            }
+            placeholder="At least 8 characters"
+            helperText="Share this password with them — they use it to log in and open the scanner."
+            autoComplete="new-password"
+          />
+        </form>
+      </Modal>
     </div>
   )
 }

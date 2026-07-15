@@ -37,21 +37,30 @@ router.get(
     const { rows } = await query(
       `SELECT id, title, description, venue, city,
               event_start, event_end, sales_start, sales_end,
-              status, cover_image_url, created_at
+              status, cover_image_url, created_at, is_locked
        FROM events
-       WHERE status = 'published'
+       WHERE status = 'published' AND is_locked = false
        ORDER BY event_start DESC`
     );
     res.json({ events: rows });
   })
 );
 
-// GET /api/events/mine — organizer: only this company's events
+// GET /api/events/mine — organizer: this company's events; super_admin: all
 router.get(
   "/mine",
   authRequired,
   roleGuard("company_admin"),
   asyncHandler(async (req, res) => {
+    if (req.user.role === "super_admin") {
+      const { rows } = await query(
+        `SELECT e.*, c.name AS company_name
+         FROM events e
+         JOIN companies c ON c.id = e.company_id
+         ORDER BY e.event_start DESC`
+      );
+      return res.json({ events: rows });
+    }
     const { rows } = await query(
       `SELECT * FROM events WHERE company_id = $1 ORDER BY event_start DESC`,
       [req.user.company_id]
@@ -104,6 +113,10 @@ router.get(
     const event = await loadEvent(req.params.id);
     const owner = isEventOwner(req.user, event);
 
+    if (event.is_locked && !owner) {
+      throw new ApiError(404, "Event not found");
+    }
+
     if (!PUBLIC_EVENT_STATUSES.has(event.status) && !owner) {
       throw new ApiError(404, "Event not found");
     }
@@ -120,6 +133,9 @@ router.patch(
   asyncHandler(async (req, res) => {
     const event = await loadEvent(req.params.id);
     assertSameCompany(req, event.company_id);
+    if (event.is_locked && req.user.role !== "super_admin") {
+      throw new ApiError(403, "This event is locked by the platform owner");
+    }
 
     const allowed = [
       "title", "description", "venue", "city",
@@ -154,6 +170,9 @@ router.post(
   asyncHandler(async (req, res) => {
     const event = await loadEvent(req.params.id);
     assertSameCompany(req, event.company_id);
+    if (event.is_locked && req.user.role !== "super_admin") {
+      throw new ApiError(403, "This event is locked by the platform owner");
+    }
 
     const tt = await query(
       `SELECT COUNT(*)::int AS c FROM ticket_types WHERE event_id = $1 AND is_active = true`,

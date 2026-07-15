@@ -186,9 +186,56 @@ export const ticketsAPI = {
     api.post(`/tickets/${code}/check-in`, { staff_id: staffId }),
 }
 
+// Door / gate staff for a single event
+export const staffAPI = {
+  listByEvent: (eventId: string) => api.get(`/events/${eventId}/staff`),
+
+  create: (
+    eventId: string,
+    data: { full_name: string; email: string; password: string }
+  ) => api.post(`/events/${eventId}/staff`, data),
+
+  remove: (eventId: string, userId: string) =>
+    api.delete(`/events/${eventId}/staff/${userId}`),
+}
+
 // Companies endpoints
 export const companiesAPI = {
   getCompany: (id: string) => api.get(`/companies/${id}`),
+}
+
+// Platform owner (super_admin) endpoints
+export const adminAPI = {
+  overview: () => api.get('/admin/overview'),
+
+  listCompanies: () => api.get('/admin/companies'),
+
+  createCompany: (data: {
+    company_name: string
+    slug: string
+    contact_email: string
+    contact_phone?: string
+    admin_name: string
+    admin_email: string
+    password: string
+  }) => api.post('/admin/companies', data),
+
+  listUsers: () => api.get('/admin/users'),
+
+  createUser: (data: {
+    company_id: string
+    full_name: string
+    email: string
+    password: string
+  }) => api.post('/admin/users', data),
+
+  listEvents: () => api.get('/admin/events'),
+
+  setUserLocked: (userId: string, locked: boolean) =>
+    api.patch(`/admin/users/${userId}/lock`, { locked }),
+
+  setEventLocked: (eventId: string, locked: boolean) =>
+    api.patch(`/admin/events/${eventId}/lock`, { locked }),
 }
 
 export default api

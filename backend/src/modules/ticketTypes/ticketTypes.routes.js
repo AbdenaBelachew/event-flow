@@ -18,6 +18,12 @@ async function loadEventOwned(req, eventId) {
   return event;
 }
 
+function assertEventWritable(req, event) {
+  if (event.is_locked && req.user.role !== "super_admin") {
+    throw new ApiError(403, "This event is locked by the platform owner");
+  }
+}
+
 // GET /api/events/:eventId/ticket-types   (public list of active types)
 router.get(
   "/",
@@ -36,7 +42,8 @@ router.post(
   authRequired,
   roleGuard("company_admin"),
   asyncHandler(async (req, res) => {
-    await loadEventOwned(req, req.params.eventId);
+    const event = await loadEventOwned(req, req.params.eventId);
+    assertEventWritable(req, event);
     const { name, price_etb, quantity_total, sales_start, sales_end, max_per_order } =
       req.body || {};
     if (!name || price_etb === undefined || !quantity_total) {
@@ -67,7 +74,8 @@ router.patch(
   asyncHandler(async (req, res) => {
     const existing = await query(`SELECT * FROM ticket_types WHERE id = $1`, [req.params.id]);
     if (!existing.rows.length) throw new ApiError(404, "Ticket type not found");
-    await loadEventOwned(req, existing.rows[0].event_id);
+    const event = await loadEventOwned(req, existing.rows[0].event_id);
+    assertEventWritable(req, event);
 
     const allowed = [
       "name", "price_etb", "quantity_total",

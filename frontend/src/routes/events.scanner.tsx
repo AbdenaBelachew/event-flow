@@ -2,248 +2,417 @@ import { useRef, useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { ticketsAPI, eventsAPI } from '../lib/api'
-import Alert from '../components/Alert'
-import Card, { CardContent } from '../components/Card'
-import { QrCode, CheckCircle, AlertCircle, ArrowLeft, Zap, Shield, Wifi } from 'lucide-react'
-import { useRequireEventOwner } from '../lib/event-access'
+import { useAuth } from '../lib/auth-context'
+import {
+  useRequireEventOwner,
+  isDoorChecker,
+  canEditEvent,
+} from '../lib/event-access'
+import Button from '../components/Button'
+import {
+  CheckCircle2,
+  XCircle,
+  ArrowLeft,
+  ScanLine,
+  MapPin,
+  Calendar,
+  LogOut,
+  RotateCcw,
+} from 'lucide-react'
+import { format } from 'date-fns'
 
-interface ScanResult {
-  success: boolean
-  ticket?: {
-    id: string
-    holder_name: string
-    ticket_code: string
-    status: string
-  }
+type CheckInResult =
+  | 'success'
+  | 'already_used'
+  | 'unpaid'
+  | 'invalid'
+  | 'wrong_event'
+  | 'error'
+
+interface ScanFeedback {
+  result: CheckInResult
   message: string
+  ticket?: {
+    ticket_code: string
+    holder_name: string
+    status: string
+    used_at?: string
+  } | null
+}
+
+const RESULT_COPY: Record<
+  CheckInResult,
+  { title: string; tone: 'ok' | 'warn' | 'bad' }
+> = {
+  success: { title: 'Welcome in', tone: 'ok' },
+  already_used: { title: 'Already used', tone: 'warn' },
+  unpaid: { title: 'Not paid', tone: 'bad' },
+  invalid: { title: 'Invalid ticket', tone: 'bad' },
+  wrong_event: { title: 'Wrong event', tone: 'bad' },
+  error: { title: 'Check-in failed', tone: 'bad' },
+}
+
+function parseScanPayload(data: any, fallbackMessage?: string): ScanFeedback {
+  const result = (data?.result as CheckInResult) || 'error'
+  return {
+    result: RESULT_COPY[result] ? result : 'error',
+    message: data?.message || fallbackMessage || 'Something went wrong',
+    ticket: data?.ticket ?? null,
+  }
 }
 
 export default function ScannerPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { user, logout } = useAuth()
   const inputRef = useRef<HTMLInputElement>(null)
   const [ticketCode, setTicketCode] = useState('')
-  const [scanResult, setScanResult] = useState<ScanResult | null>(null)
-  const [error, setError] = useState('')
+  const [feedback, setFeedback] = useState<ScanFeedback | null>(null)
+  const [checkedInCount, setCheckedInCount] = useState(0)
+
+  const checker = isDoorChecker(user)
 
   const { data: event, isLoading: eventLoading } = useQuery({
     queryKey: ['events', id],
     queryFn: () => eventsAPI.getEvent(id!).then((res) => res.data.event),
     enabled: !!id,
   })
+
   const isOwner = useRequireEventOwner(event, eventLoading)
+  const isAdmin = canEditEvent(user, event)
 
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
 
-  if (event && !isOwner) return null
+  useEffect(() => {
+    if (!feedback || feedback.result !== 'success') return
+    const t = setTimeout(() => {
+      setFeedback(null)
+      inputRef.current?.focus()
+    }, 2800)
+    return () => clearTimeout(t)
+  }, [feedback])
 
   const checkInMutation = useMutation({
-    mutationFn: (code: string) => ticketsAPI.checkIn(code),
+    mutationFn: (code: string) => ticketsAPI.checkIn(code.trim()),
     onSuccess: (response) => {
-      setScanResult(response.data)
+      const parsed = parseScanPayload(response.data)
+      setFeedback(parsed)
+      if (parsed.result === 'success') {
+        setCheckedInCount((n) => n + 1)
+      }
       setTicketCode('')
-      setTimeout(() => inputRef.current?.focus(), 100)
+      setTimeout(() => inputRef.current?.focus(), 80)
     },
     onError: (err: any) => {
-      setScanResult({
-        success: false,
-        message: err.response?.data?.message || 'Check-in failed',
-      })
+      const data = err?.response?.data
+      setFeedback(
+        parseScanPayload(data, data?.message || err?.message || 'Check-in failed')
+      )
       setTicketCode('')
-      setTimeout(() => inputRef.current?.focus(), 100)
+      setTimeout(() => inputRef.current?.focus(), 80)
     },
   })
 
-  const handleScan = (code: string) => {
-    if (!code.trim()) return
+  if (event && !isOwner) return null
+
+  const handleScan = () => {
+    const code = ticketCode.trim()
+    if (!code || checkInMutation.isPending) return
+    setFeedback(null)
     checkInMutation.mutate(code)
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleScan(ticketCode)
-    }
+  const readyForNext = () => {
+    setFeedback(null)
+    setTicketCode('')
+    setTimeout(() => inputRef.current?.focus(), 50)
   }
 
-  const resetAndFocus = () => {
-    setScanResult(null)
-    setTimeout(() => inputRef.current?.focus(), 100)
+  const tone = feedback ? RESULT_COPY[feedback.result].tone : null
+
+  if (eventLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-white min-h-[calc(100dvh-3.5rem)]">
+        <div className="text-center px-4">
+          <div className="w-10 h-10 border-2 border-brand-200 border-t-brand-600 rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-sm text-slate-500">Loading scanner…</p>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-brand-900">
-      <div className="max-w-lg mx-auto px-3 xs:px-4 sm:px-5 py-4 xs:py-5 sm:py-6 md:py-8">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4 xs:mb-5 sm:mb-6">
-          <button
-            onClick={() => navigate(`/events/${id}`)}
-            className="flex items-center gap-1.5 xs:gap-2 text-slate-300 hover:text-white transition-all duration-200 text-sm xs:text-base font-medium px-2 xs:px-3 py-2 xs:py-2.5 rounded-lg hover:bg-white/10 active:bg-white/5"
-            aria-label="Back to event"
-          >
-            <ArrowLeft className="w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6" />
-            <span className="hidden xs:inline xs:ml-0.5">Back</span>
-            <span className="inline xs:hidden">Back</span>
-          </button>
-          <div className="flex items-center gap-2 xs:gap-2.5">
-            <div className="w-2 h-2 xs:w-2.5 xs:h-2.5 rounded-full bg-brand-400 animate-pulse"></div>
-            <span className="text-xs xs:text-sm font-semibold text-brand-400">Live Scanner</span>
-          </div>
-        </div>
-
-        {error && (
-          <Alert
-            type="error"
-            message={error}
-            onClose={() => setError('')}
-            className="mb-4 xs:mb-5 sm:mb-6"
-          />
-        )}
-
-        {/* Scanner Card */}
-        <Card className="shadow-2xl hover:shadow-3xl border-0 overflow-hidden transition-shadow duration-300">
-          <div className="bg-gradient-to-r from-brand-600 via-brand-600 to-brand-600 px-4 xs:px-5 sm:px-6 py-4 xs:py-5 sm:py-6">
-            <div className="flex items-center gap-3 xs:gap-4">
-              <div className="w-10 h-10 xs:w-12 xs:h-12 sm:w-14 sm:h-14 rounded-xl bg-white/20 backdrop-blur-lg flex items-center justify-center">
-                <QrCode className="w-5 h-5 xs:w-6 xs:h-6 sm:w-7 sm:h-7 text-white" />
-              </div>
-              <div>
-                <h1 className="text-lg xs:text-xl sm:text-2xl font-bold text-white">Check-in Scanner</h1>
-                <p className="text-xs xs:text-sm text-white/90 mt-0.5 xs:mt-1">Scan or enter ticket code to check-in attendees</p>
-              </div>
-            </div>
-          </div>
-
-          <CardContent className="p-4 xs:p-5 sm:p-6 md:p-8">
-            {/* Scanner Input */}
-            <div className="relative">
-              <input
-                ref={inputRef}
-                type="text"
-                placeholder="Enter ticket code here..."
-                value={ticketCode}
-                onChange={(e) => setTicketCode(e.target.value.toUpperCase())}
-                onKeyDown={handleKeyDown}
-                autoFocus
-                className="w-full text-base xs:text-lg sm:text-xl py-3 xs:py-4 sm:py-5 px-4 xs:px-5 sm:px-6 pr-14 xs:pr-16 sm:pr-20 border-2 border-slate-200 rounded-xl xs:rounded-2xl focus:ring-3 focus:ring-brand-500 focus:border-transparent bg-white shadow-sm"
-                aria-label="Ticket code input"
-              />
+    <div className="flex-1 bg-white min-h-[calc(100dvh-3.5rem)] flex flex-col">
+      {/* Compact header */}
+      <header className="border-b border-slate-200 bg-slate-50/90 sticky top-14 z-20">
+        <div className="max-w-lg mx-auto w-full px-3 sm:px-5 py-3 sm:py-4">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            {!checker ? (
               <button
-                onClick={() => handleScan(ticketCode)}
-                disabled={checkInMutation.isPending || !ticketCode.trim()}
-                className="absolute right-2 xs:right-3 top-1/2 -translate-y-1/2 p-2 xs:p-2.5 sm:p-3 bg-gradient-to-r from-brand-600 to-brand-600 text-white rounded-lg xs:rounded-xl hover:from-brand-700 hover:to-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-md hover:shadow-lg active:scale-95"
-                aria-label="Scan ticket"
+                type="button"
+                onClick={() => navigate(`/events/${id}`)}
+                className="shrink-0 w-10 h-10 sm:w-9 sm:h-9 inline-flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-800 hover:bg-white border border-transparent hover:border-slate-200"
+                aria-label="Back to event"
               >
-                {checkInMutation.isPending ? (
-                  <div className="w-5 h-5 xs:w-6 xs:h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <Zap className="w-5 h-5 xs:w-6 xs:h-6 sm:w-7 sm:h-7" />
-                )}
+                <ArrowLeft className="w-5 h-5" />
               </button>
-            </div>
-
-            {/* Scan Results */}
-            {scanResult && (
-              <div
-                className={`mt-4 xs:mt-5 sm:mt-6 p-4 xs:p-5 sm:p-6 rounded-xl xs:rounded-2xl border-2 transition-all duration-300 ${
-                  scanResult.success 
-                    ? 'bg-gradient-to-br from-brand-50 to-purple-50 border-brand-300 shadow-brand-100' 
-                    : 'bg-gradient-to-br from-red-50 to-rose-50 border-red-300 shadow-red-100'
-                }`}
-              >
-                <div className="flex items-start gap-3 xs:gap-4">
-                  <div className={`w-10 h-10 xs:w-12 xs:h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm ${
-                    scanResult.success ? 'bg-brand-100' : 'bg-red-100'
-                  }`}>
-                    {scanResult.success ? (
-                      <CheckCircle className="w-6 h-6 xs:w-7 xs:h-7 sm:w-8 sm:h-8 text-brand-600" />
-                    ) : (
-                      <AlertCircle className="w-6 h-6 xs:w-7 xs:h-7 sm:w-8 sm:h-8 text-red-600" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h2 className={`text-base xs:text-lg sm:text-xl font-bold ${
-                      scanResult.success ? 'text-brand-900' : 'text-red-900'
-                    }`}>
-                      {scanResult.success ? '✓ Checked In Successfully!' : '✗ Check-in Failed'}
-                    </h2>
-                    <p className={`text-sm xs:text-base mt-1 xs:mt-1.5 ${
-                      scanResult.success ? 'text-brand-700' : 'text-red-700'
-                    }`}>
-                      {scanResult.message}
-                    </p>
-
-                    {scanResult.ticket && (
-                      <div className="mt-3 xs:mt-4 pt-3 xs:pt-4 border-t border-slate-200 grid grid-cols-1 xs:grid-cols-2 gap-3 xs:gap-4 text-sm xs:text-base">
-                        <div className="space-y-1">
-                          <p className="text-xs xs:text-sm text-slate-500 font-medium">Ticket Holder</p>
-                          <p className="font-semibold text-slate-900 truncate text-base xs:text-lg">{scanResult.ticket.holder_name}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-xs xs:text-sm text-slate-500 font-medium">Ticket Code</p>
-                          <p className="font-mono text-sm xs:text-base text-slate-900 truncate bg-slate-100 px-2 xs:px-3 py-1 xs:py-1.5 rounded-lg">{scanResult.ticket.ticket_code}</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <button
-                  onClick={resetAndFocus}
-                  className="w-full mt-4 xs:mt-5 sm:mt-6 py-2.5 xs:py-3 sm:py-3.5 bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-lg xs:rounded-xl hover:from-slate-800 hover:to-slate-700 font-medium text-sm xs:text-base transition-all duration-200 shadow-md hover:shadow-lg active:scale-95"
-                >
-                  Scan Next Ticket
-                </button>
+            ) : (
+              <div className="shrink-0 w-10 h-10 sm:w-9 sm:h-9 rounded-lg bg-brand-600 text-white flex items-center justify-center">
+                <ScanLine className="w-5 h-5" />
               </div>
             )}
-          </CardContent>
-        </Card>
 
-        {/* Features Row */}
-        <div className="mt-4 xs:mt-5 sm:mt-6 grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 gap-2 xs:gap-3">
-          <div className="flex items-center gap-2 xs:gap-2.5 p-3 xs:p-3.5 bg-white/10 backdrop-blur-lg rounded-lg xs:rounded-xl hover:bg-white/15 transition-all duration-200">
-            <QrCode className="w-4 h-4 xs:w-5 xs:h-5 text-brand-400 flex-shrink-0" />
-            <div>
-              <p className="text-xs xs:text-sm font-semibold text-white">Scan QR Code</p>
-              <p className="text-[10px] xs:text-xs text-slate-300">Quick barcode scanning</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] sm:text-[11px] font-bold tracking-[0.18em] uppercase text-brand-600">
+                Door check-in
+              </p>
+              <h1 className="font-display text-base sm:text-xl font-bold text-slate-900 tracking-tight leading-snug line-clamp-2">
+                {event?.title || 'Event'}
+              </h1>
+            </div>
+
+            <div className="shrink-0 flex items-center gap-1.5 sm:gap-2">
+              <div className="rounded-lg bg-white border border-slate-200 px-2.5 py-1.5 text-center min-w-[3.25rem]">
+                <p className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold leading-none">
+                  In
+                </p>
+                <p className="font-display text-lg sm:text-xl font-bold text-brand-600 tabular-nums leading-none mt-0.5">
+                  {checkedInCount}
+                </p>
+              </div>
+              {checker && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    logout()
+                    navigate('/login', { replace: true })
+                  }}
+                  className="w-10 h-10 sm:w-9 sm:h-9 inline-flex items-center justify-center rounded-lg text-slate-500 hover:text-red-600 hover:bg-white border border-transparent hover:border-slate-200"
+                  aria-label="Sign out"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              )}
             </div>
           </div>
-          <div className="flex items-center gap-2 xs:gap-2.5 p-3 xs:p-3.5 bg-white/10 backdrop-blur-lg rounded-lg xs:rounded-xl hover:bg-white/15 transition-all duration-200">
-            <Wifi className="w-4 h-4 xs:w-5 xs:h-5 text-brand-400 flex-shrink-0" />
-            <div>
-              <p className="text-xs xs:text-sm font-semibold text-white">Real-time Sync</p>
-              <p className="text-[10px] xs:text-xs text-slate-300">Instant database updates</p>
+
+          {(event?.venue || event?.event_start) && (
+            <div className="mt-2.5 flex flex-col sm:flex-row sm:flex-wrap gap-1 sm:gap-x-3 sm:gap-y-1 text-xs text-slate-500 pl-12 sm:pl-11">
+              {event?.venue && (
+                <span className="inline-flex items-center gap-1 min-w-0">
+                  <MapPin className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                  <span className="truncate">
+                    {event.venue}
+                    {event.city ? `, ${event.city}` : ''}
+                  </span>
+                </span>
+              )}
+              {event?.event_start && (
+                <span className="inline-flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                  <span className="sm:hidden">
+                    {format(new Date(event.event_start), 'MMM d · h:mm a')}
+                  </span>
+                  <span className="hidden sm:inline">
+                    {format(new Date(event.event_start), 'EEE, MMM d · h:mm a')}
+                  </span>
+                </span>
+              )}
             </div>
+          )}
+        </div>
+      </header>
+
+      {/* Body */}
+      <div className="flex-1 flex flex-col max-w-lg mx-auto w-full">
+        <div className="flex-1 px-3 sm:px-5 pt-4 sm:pt-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:pb-8">
+          <div className="mb-4 sm:mb-5">
+            <p className="font-display text-sm sm:text-base font-semibold text-slate-900">
+              Scan ticket
+            </p>
+            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+              <span className="sm:hidden">Type or scan a code, then check in</span>
+              <span className="hidden sm:inline">
+                Enter code or use a barcode scanner — then press Enter
+              </span>
+            </p>
           </div>
-          <div className="flex items-center gap-2 xs:gap-2.5 p-3 xs:p-3.5 bg-white/10 backdrop-blur-lg rounded-lg xs:rounded-xl hover:bg-white/15 transition-all duration-200">
-            <Shield className="w-4 h-4 xs:w-5 xs:h-5 text-amber-400 flex-shrink-0" />
-            <div>
-              <p className="text-xs xs:text-sm font-semibold text-white">Duplicate Prevention</p>
-              <p className="text-[10px] xs:text-xs text-slate-300">No double check-ins</p>
-            </div>
+
+          <label className="sr-only" htmlFor="ticket-code-input">
+            Ticket code
+          </label>
+          <input
+            id="ticket-code-input"
+            ref={inputRef}
+            type="text"
+            inputMode="text"
+            autoComplete="off"
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+            enterKeyHint="go"
+            placeholder="TICKET CODE"
+            value={ticketCode}
+            onChange={(e) => {
+              setTicketCode(e.target.value.toUpperCase())
+              if (feedback && feedback.result !== 'success') setFeedback(null)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                handleScan()
+              }
+            }}
+            disabled={checkInMutation.isPending}
+            className="w-full font-mono text-base sm:text-xl md:text-2xl tracking-[0.12em] sm:tracking-wider text-center py-3.5 sm:py-4 px-3 border-2 border-slate-200 rounded-xl bg-white text-slate-900 placeholder:text-slate-300 placeholder:tracking-normal focus:outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-500/15 disabled:opacity-60 touch-manipulation"
+          />
+
+          {/* Result */}
+          <div className="mt-4 sm:mt-6">
+            {!feedback && !checkInMutation.isPending && (
+              <div className="border border-dashed border-slate-200 rounded-xl px-4 py-7 sm:py-10 text-center">
+                <p className="font-display text-base sm:text-lg font-semibold text-slate-800">
+                  Ready
+                </p>
+                <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-[16rem] mx-auto leading-relaxed">
+                  Waiting for the next ticket. Green means let them in.
+                </p>
+              </div>
+            )}
+
+            {checkInMutation.isPending && !feedback && (
+              <div className="border border-slate-200 rounded-xl px-4 py-8 text-center">
+                <div className="w-8 h-8 border-2 border-brand-200 border-t-brand-600 rounded-full animate-spin mx-auto mb-3" />
+                <p className="text-sm text-slate-500">Checking…</p>
+              </div>
+            )}
+
+            {feedback && (
+              <div
+                className={[
+                  'rounded-xl border px-4 py-6 sm:px-5 sm:py-8 text-center animate-[fadeUp_0.35s_ease-out_both]',
+                  tone === 'ok' && 'bg-brand-50 border-brand-200',
+                  tone === 'warn' && 'bg-amber-50 border-amber-200',
+                  tone === 'bad' && 'bg-red-50 border-red-200',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              >
+                <div
+                  className={[
+                    'w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4',
+                    tone === 'ok' && 'bg-brand-600 text-white',
+                    tone === 'warn' && 'bg-amber-500 text-white',
+                    tone === 'bad' && 'bg-red-600 text-white',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                >
+                  {tone === 'ok' ? (
+                    <CheckCircle2 className="w-7 h-7 sm:w-8 sm:h-8" />
+                  ) : (
+                    <XCircle className="w-7 h-7 sm:w-8 sm:h-8" />
+                  )}
+                </div>
+
+                <h2
+                  className={[
+                    'font-display text-xl sm:text-3xl font-bold tracking-tight',
+                    tone === 'ok' && 'text-brand-900',
+                    tone === 'warn' && 'text-amber-950',
+                    tone === 'bad' && 'text-red-950',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                >
+                  {RESULT_COPY[feedback.result].title}
+                </h2>
+                <p
+                  className={[
+                    'mt-1.5 sm:mt-2 text-sm sm:text-base px-1',
+                    tone === 'ok' && 'text-brand-800',
+                    tone === 'warn' && 'text-amber-900/80',
+                    tone === 'bad' && 'text-red-900/80',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                >
+                  {feedback.message}
+                </p>
+
+                {feedback.ticket && (
+                  <div className="mt-4 sm:mt-6 pt-4 border-t border-black/5 grid grid-cols-2 gap-3 text-left">
+                    <div className="min-w-0">
+                      <p className="text-[10px] sm:text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
+                        Name
+                      </p>
+                      <p className="font-semibold text-sm sm:text-base text-slate-900 mt-0.5 truncate">
+                        {feedback.ticket.holder_name || '—'}
+                      </p>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] sm:text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
+                        Code
+                      </p>
+                      <p className="font-mono text-xs sm:text-sm text-slate-900 mt-0.5 truncate">
+                        {feedback.ticket.ticket_code}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {feedback.result !== 'success' && (
+                  <Button
+                    className="mt-5 w-full sm:w-auto"
+                    variant="outline"
+                    size="lg"
+                    onClick={readyForNext}
+                    leftIcon={<RotateCcw className="w-4 h-4" />}
+                  >
+                    Scan next
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
+
+          {user && (
+            <p className="mt-6 mb-2 text-center text-[11px] sm:text-xs text-slate-400 px-2">
+              {user.full_name}
+              {checker ? ' · door checker' : isAdmin ? ' · admin' : ''}
+            </p>
+          )}
         </div>
 
-        {/* Instructions */}
-        <div className="mt-4 xs:mt-5 sm:mt-6 bg-white/5 backdrop-blur-lg rounded-xl xs:rounded-2xl p-4 xs:p-5">
-          <h3 className="text-sm xs:text-base font-semibold text-white mb-2 xs:mb-3">How to use:</h3>
-          <ul className="space-y-1.5 xs:space-y-2 text-xs xs:text-sm text-slate-300">
-            <li className="flex items-start gap-2">
-              <span className="inline-flex items-center justify-center w-5 h-5 xs:w-6 xs:h-6 bg-brand-500/20 text-brand-400 rounded-full text-[10px] xs:text-xs font-bold flex-shrink-0 mt-0.5">1</span>
-              <span>Enter ticket code manually or use device camera to scan QR code</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="inline-flex items-center justify-center w-5 h-5 xs:w-6 xs:h-6 bg-brand-500/20 text-brand-400 rounded-full text-[10px] xs:text-xs font-bold flex-shrink-0 mt-0.5">2</span>
-              <span>Press Enter or click Scan button to check-in attendee</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="inline-flex items-center justify-center w-5 h-5 xs:w-6 xs:h-6 bg-amber-500/20 text-amber-400 rounded-full text-[10px] xs:text-xs font-bold flex-shrink-0 mt-0.5">3</span>
-              <span>View real-time results and continue scanning next tickets</span>
-            </li>
-          </ul>
+        {/* Sticky thumb CTA — mobile & tablet */}
+        <div className="fixed bottom-0 inset-x-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur-md sm:static sm:border-0 sm:bg-transparent sm:backdrop-blur-none sm:px-5 sm:pb-6">
+          <div
+            className="max-w-lg mx-auto px-3 sm:px-0 pt-3"
+            style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+          >
+            <Button
+              type="button"
+              size="lg"
+              fullWidth
+              isLoading={checkInMutation.isPending}
+              disabled={!ticketCode.trim()}
+              onClick={handleScan}
+              className="min-h-[3rem] text-base font-semibold touch-manipulation"
+            >
+              Check in
+            </Button>
+          </div>
         </div>
       </div>
+
+      <style>{`
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   )
 }

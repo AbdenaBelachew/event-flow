@@ -18,7 +18,20 @@ async function seed() {
     );
     const companyId = company.rows[0].id;
 
-    // Users
+    // Platform owner (system owner) — no company affiliation
+    await client.query(
+      `INSERT INTO users (company_id, full_name, email, password_hash, role)
+       VALUES (NULL,$1,$2,$3,'super_admin')
+       ON CONFLICT (email) DO UPDATE SET
+         full_name = EXCLUDED.full_name,
+         password_hash = EXCLUDED.password_hash,
+         role = 'super_admin',
+         company_id = NULL
+       RETURNING id`,
+      ["System Owner", "owner@eventflow.et", passwordHash]
+    );
+
+    // Company organizer
     const admin = await client.query(
       `INSERT INTO users (company_id, full_name, email, password_hash, role)
        VALUES ($1,$2,$3,$4,'company_admin')
@@ -85,6 +98,7 @@ async function seed() {
 
     // eslint-disable-next-line no-console
     console.log("✅ Seed complete");
+    console.log("   System owner:  owner@eventflow.et / Password123!");
     console.log("   Company admin: admin@addisevents.et / Password123!");
     console.log("   Gate staff:    staff@addisevents.et / Password123!");
     console.log(`   Event ID:      ${eventId}`);

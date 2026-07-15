@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../lib/auth-context'
 import { authAPI } from '../lib/api'
+import { homePath } from '../lib/event-access'
 import Input from '../components/Input'
 import Button from '../components/Button'
 import Alert from '../components/Alert'
@@ -41,7 +42,7 @@ export default function LoginPage() {
       const { token, user, company } = response.data
 
       login(token, user, company)
-      navigate('/dashboard')
+      navigate(homePath(user), { replace: true })
     } catch (err: any) {
       setError(err.response?.data?.message || 'Login failed.')
     } finally {
@@ -150,7 +151,7 @@ export default function LoginPage() {
             <div className="mt-8 border-t border-slate-200 pt-6 text-center">
 
               <p className="text-sm text-slate-500">
-                Don't have an account?
+                Organizer account?
               </p>
 
               <Link

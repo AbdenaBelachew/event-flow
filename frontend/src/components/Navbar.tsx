@@ -1,5 +1,6 @@
 import { useNavigate, useLocation, NavLink } from 'react-router-dom'
 import { useAuth } from '../lib/auth-context'
+import { isDoorChecker, isSystemOwner, homePath } from '../lib/event-access'
 import { LogOut } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { cn } from '../lib/cn'
@@ -85,11 +86,15 @@ export default function Navbar({ minimal = false, forcePublic = false }: NavbarP
                         type="button"
                         onClick={() => {
                           setProfileOpen(false)
-                          navigate('/dashboard')
+                          navigate(homePath(user))
                         }}
                         className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
                       >
-                        Dashboard
+                        {isDoorChecker(user)
+                          ? 'My scanner'
+                          : isSystemOwner(user)
+                            ? 'Platform admin'
+                            : 'Dashboard'}
                       </button>
                       <button
                         type="button"

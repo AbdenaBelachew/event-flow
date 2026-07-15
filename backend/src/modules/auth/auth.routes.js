@@ -60,6 +60,9 @@ router.post(
 
     const ok = await bcrypt.compare(password, user.password_hash);
     if (!ok) throw new ApiError(401, "Invalid credentials");
+    if (user.is_locked) {
+      throw new ApiError(403, "Account is locked. Contact the platform owner.");
+    }
 
     const safeUser = {
       id: user.id,
